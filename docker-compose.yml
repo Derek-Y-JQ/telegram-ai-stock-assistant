@@ -1,0 +1,9 @@
+services:
+  stock-bot:
+    build: .
+    container_name: telegram-stock-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
