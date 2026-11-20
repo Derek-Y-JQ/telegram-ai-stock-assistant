@@ -281,9 +281,15 @@ class MarketDataService:
     # Global market overview (A-Share + HK + US)
     # ------------------------------------------------------------------
 
-    async def _fetch_cn_index(self, symbol: str, code: str, name: str) -> IndexQuote | None:
+    async def _fetch_cn_index(
+        self,
+        symbol: str,
+        code: str,
+        name: str,
+        yf_symbol: str | None = None,
+    ) -> IndexQuote | None:
         # Support both AkShare >= 1.20.44 (index_zh_daily_em) and older (stock_zh_index_daily_em),
-        # plus Sina (stock_zh_index_daily) and Tencent (stock_zh_index_daily_tx) fallbacks.
+        # plus Sina/Tencent and yfinance fallback for overseas cloud servers (Railway/Zeabur).
         fetchers = [
             getattr(ak, "index_zh_daily_em", None),
             getattr(ak, "stock_zh_index_daily_em", None),
@@ -302,6 +308,8 @@ class MarketDataService:
                 logger.debug("Index %s via %s failed: %s", symbol, fetcher.__name__, exc)
 
         if df is None or df.empty:
+            if yf_symbol:
+                return await self._fetch_yf_index(yf_symbol, code, name, "CN")
             return None
 
         # Normalize column names across AkShare versions (English or Chinese)
@@ -355,11 +363,11 @@ class MarketDataService:
         """Fetch major A-share, Hong Kong, and US market indices concurrently."""
         async def _fetch() -> list[IndexQuote]:
             tasks = [
-                # A-Share
-                self._fetch_cn_index("sh000001", "000001.SH", "上证指数"),
-                self._fetch_cn_index("sz399001", "399001.SZ", "深证成指"),
-                self._fetch_cn_index("sz399006", "399006.SZ", "创业板指"),
-                self._fetch_cn_index("sh000688", "000688.SH", "科创50"),
+                # A-Share (with yfinance fallbacks for overseas cloud deployments)
+                self._fetch_cn_index("sh000001", "000001.SH", "上证指数", yf_symbol="000001.SS"),
+                self._fetch_cn_index("sz399001", "399001.SZ", "深证成指", yf_symbol="399001.SZ"),
+                self._fetch_cn_index("sz399006", "399006.SZ", "创业板指", yf_symbol="399006.SZ"),
+                self._fetch_cn_index("sh000688", "000688.SH", "科创50", yf_symbol="000688.SS"),
                 # Hong Kong
                 self._fetch_yf_index("^HSI", "HSI", "恒生指数", "HK"),
                 self._fetch_yf_index("HSTECH.HK", "HSTECH", "恒生科技", "HK"),
