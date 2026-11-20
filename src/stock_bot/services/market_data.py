@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from typing import Any, Literal
 
 import akshare as ak
+import httpx
 import pandas as pd
 import yfinance as yf
 
@@ -281,15 +282,80 @@ class MarketDataService:
     # Global market overview (A-Share + HK + US)
     # ------------------------------------------------------------------
 
-    async def _fetch_cn_index(
+    async def _fetch_cn_indices_tencent(
+        self,
+        specs: list[tuple[str, str, str, str]],
+    ) -> dict[str, IndexQuote]:
+        """Fetch all A-share indices in a single fast HTTP request via Tencent qt.gtimg.cn."""
+        symbols = ",".join(s[0] for s in specs)
+        url = f"https://qt.gtimg.cn/q={symbols}"
+        code_map = {s[0]: (s[1], s[2]) for s in specs}
+        results: dict[str, IndexQuote] = {}
+
+        try:
+            async with httpx.AsyncClient(timeout=6.0, follow_redirects=True) as client:
+                resp = await client.get(url, headers={"User-Agent": "Mozilla/5.0"})
+                resp.raise_for_status()
+                text = resp.content.decode("gbk", errors="ignore")
+        except Exception as exc:
+            logger.warning("Tencent batch CN index fetch failed: %s", exc)
+            return results
+
+        for line in text.splitlines():
+            line = line.strip()
+            if not line or '="' not in line:
+                continue
+            prefix, rest = line.split('="', 1)
+            symbol = prefix.removeprefix("v_").strip()
+            if symbol not in code_map:
+                continue
+            payload = rest.rstrip('";')
+            fields = payload.split("~")
+            if len(fields) < 33:
+                continue
+            close = _safe_float(fields[3])
+            pre_close = _safe_float(fields[4])
+            if close is None or close <= 0:
+                continue
+            change_amount = _safe_float(fields[31])
+            change_pct = _safe_float(fields[32])
+            if change_amount is None and pre_close:
+                change_amount = close - pre_close
+            if change_pct is None and pre_close:
+                change_pct = ((close - pre_close) / pre_close) * 100.0
+            raw_dt = fields[30] if len(fields) > 30 else ""
+            trade_date = (
+                f"{raw_dt[0:4]}-{raw_dt[4:6]}-{raw_dt[6:8]}"
+                if len(raw_dt) >= 8 and raw_dt[:8].isdigit()
+                else ""
+            )
+            code, name = code_map[symbol]
+            results[symbol] = IndexQuote(
+                code=code,
+                name=name,
+                market_type="CN",
+                close=round(close, 2),
+                change_pct=round(change_pct or 0.0, 2),
+                change_amount=round(change_amount, 2) if change_amount is not None else None,
+                volume=_safe_float(fields[6]),
+                amount=_safe_float(fields[37]) if len(fields) > 37 else None,
+                trade_date=trade_date,
+            )
+        return results
+
+    async def _fetch_cn_index_fallback(
         self,
         symbol: str,
         code: str,
         name: str,
-        yf_symbol: str | None = None,
+        yf_symbol: str,
     ) -> IndexQuote | None:
-        # Support both AkShare >= 1.20.44 (index_zh_daily_em) and older (stock_zh_index_daily_em),
-        # plus Sina/Tencent and yfinance fallback for overseas cloud servers (Railway/Zeabur).
+        # Fallback 1: yfinance (fast & reliable from overseas cloud servers)
+        yf_quote = await self._fetch_yf_index(yf_symbol, code, name, "CN")
+        if yf_quote is not None:
+            return yf_quote
+
+        # Fallback 2: AkShare (with strict timeout so slow endpoints never block)
         fetchers = [
             getattr(ak, "index_zh_daily_em", None),
             getattr(ak, "stock_zh_index_daily_em", None),
@@ -301,18 +367,15 @@ class MarketDataService:
             if fetcher is None:
                 continue
             try:
-                df = await asyncio.to_thread(fetcher, symbol=symbol)
+                df = await asyncio.wait_for(asyncio.to_thread(fetcher, symbol=symbol), timeout=6.0)
                 if df is not None and not df.empty:
                     break
             except Exception as exc:
                 logger.debug("Index %s via %s failed: %s", symbol, fetcher.__name__, exc)
 
         if df is None or df.empty:
-            if yf_symbol:
-                return await self._fetch_yf_index(yf_symbol, code, name, "CN")
             return None
 
-        # Normalize column names across AkShare versions (English or Chinese)
         col_map = {"日期": "date", "开盘": "open", "收盘": "close", "成交量": "volume", "成交额": "amount"}
         df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
         latest = df.iloc[-1]
@@ -337,7 +400,7 @@ class MarketDataService:
             def _load() -> pd.DataFrame:
                 return yf.Ticker(yf_symbol).history(period="5d", interval="1d")
 
-            df = await asyncio.to_thread(_load)
+            df = await asyncio.wait_for(asyncio.to_thread(_load), timeout=8.0)
             if df is None or df.empty:
                 return None
             latest = df.iloc[-1]
@@ -361,25 +424,51 @@ class MarketDataService:
 
     async def get_market_overview(self) -> list[IndexQuote]:
         """Fetch major A-share, Hong Kong, and US market indices concurrently."""
-        async def _fetch() -> list[IndexQuote]:
-            tasks = [
-                # A-Share (with yfinance fallbacks for overseas cloud deployments)
-                self._fetch_cn_index("sh000001", "000001.SH", "上证指数", yf_symbol="000001.SS"),
-                self._fetch_cn_index("sz399001", "399001.SZ", "深证成指", yf_symbol="399001.SZ"),
-                self._fetch_cn_index("sz399006", "399006.SZ", "创业板指", yf_symbol="399006.SZ"),
-                self._fetch_cn_index("sh000688", "000688.SH", "科创50", yf_symbol="000688.SS"),
-                # Hong Kong
-                self._fetch_yf_index("^HSI", "HSI", "恒生指数", "HK"),
-                self._fetch_yf_index("HSTECH.HK", "HSTECH", "恒生科技", "HK"),
-                # US
-                self._fetch_yf_index("^GSPC", "SPX", "标普500", "US"),
-                self._fetch_yf_index("^IXIC", "IXIC", "纳斯达克", "US"),
-                self._fetch_yf_index("^DJI", "DJI", "道琼斯", "US"),
-            ]
-            raw_results = await asyncio.gather(*tasks, return_exceptions=True)
-            return [r for r in raw_results if isinstance(r, IndexQuote)]
+        cached = await self.cache.get("market_overview")
+        if cached is not None:
+            return cached
 
-        return await self.cache.get_or_set("market_overview", _fetch, ttl=120)
+        cn_specs = [
+            ("sh000001", "000001.SH", "上证指数", "000001.SS"),
+            ("sz399001", "399001.SZ", "深证成指", "399001.SZ"),
+            ("sz399006", "399006.SZ", "创业板指", "399006.SZ"),
+            ("sh000688", "000688.SH", "科创50", "000688.SS"),
+        ]
+
+        cn_task = self._fetch_cn_indices_tencent(cn_specs)
+        global_tasks = [
+            # Hong Kong
+            self._fetch_yf_index("^HSI", "HSI", "恒生指数", "HK"),
+            self._fetch_yf_index("HSTECH.HK", "HSTECH", "恒生科技", "HK"),
+            # US
+            self._fetch_yf_index("^GSPC", "SPX", "标普500", "US"),
+            self._fetch_yf_index("^IXIC", "IXIC", "纳斯达克", "US"),
+            self._fetch_yf_index("^DJI", "DJI", "道琼斯", "US"),
+        ]
+
+        cn_map, *global_raw = await asyncio.gather(cn_task, *global_tasks, return_exceptions=True)
+        cn_dict: dict[str, IndexQuote] = cn_map if isinstance(cn_map, dict) else {}
+
+        # Fill any missing CN indices via yfinance/AkShare fallback concurrently
+        missing_specs = [s for s in cn_specs if s[0] not in cn_dict]
+        if missing_specs:
+            fallback_res = await asyncio.gather(
+                *(self._fetch_cn_index_fallback(*s) for s in missing_specs),
+                return_exceptions=True,
+            )
+            for spec, res in zip(missing_specs, fallback_res, strict=True):
+                if isinstance(res, IndexQuote):
+                    cn_dict[spec[0]] = res
+
+        cn_ordered = [cn_dict[s[0]] for s in cn_specs if s[0] in cn_dict]
+        global_ordered = [r for r in global_raw if isinstance(r, IndexQuote)]
+        results = cn_ordered + global_ordered
+
+        # Cache full results for 120s; if CN failed completely, only cache briefly (15s)
+        ttl = 120 if cn_ordered else 15
+        if results:
+            await self.cache.set("market_overview", results, ttl=ttl)
+        return results
 
     # ------------------------------------------------------------------
     # Historical K-line OHLCV (CN + HK + US)
