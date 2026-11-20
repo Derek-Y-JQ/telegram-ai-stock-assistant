@@ -1,4 +1,4 @@
-"""Safe Telegram HTML formatters and message chunking utilities."""
+"""Safe Telegram HTML formatters and message chunking utilities for CN/HK/US markets."""
 
 from __future__ import annotations
 
@@ -6,9 +6,11 @@ import html
 import re
 
 from stock_bot.models import (
+    BriefSubscription,
     FinanceSummary,
     IndexQuote,
     NewsItem,
+    PriceAlert,
     StockCandidate,
     StockQuote,
     TechnicalReport,
@@ -16,6 +18,8 @@ from stock_bot.models import (
 )
 
 TELEGRAM_MAX_LEN = 4000
+
+MARKET_BADGE = {"CN": "🇨🇳 A股", "HK": "🇭🇰 港股", "US": "🇺🇸 美股"}
 
 
 def esc(text: object) -> str:
@@ -29,7 +33,6 @@ def _fmt_num(val: float | None, suffix: str = "", digits: int = 2) -> str:
 
 
 def _fmt_change(pct: float, amt: float | None = None) -> str:
-    # A-share convention: red for up, green for down
     icon = "🔴" if pct > 0 else ("🟢" if pct < 0 else "⚪")
     sign = "+" if pct > 0 else ""
     if amt is not None:
@@ -37,28 +40,38 @@ def _fmt_change(pct: float, amt: float | None = None) -> str:
     return f"{icon} {sign}{pct:.2f}%"
 
 
-def format_market_overview(indices: list[IndexQuote]) -> str:
+def format_market_overview(indices: list[IndexQuote], include_tip: bool = True) -> str:
     if not indices:
         return "⚠️ 暂时无法获取大盘指数数据，请稍后重试。"
 
-    trade_date = indices[0].trade_date
-    lines = [f"📊 <b>A 股大盘概览</b>  <code>{esc(trade_date)}</code>", ""]
-    for idx in indices:
+    lines = ["🌍 <b>全球核心大盘概览</b>", ""]
+    groups = [
+        ("CN", "🇨🇳 <b>A 股</b>"),
+        ("HK", "🇭🇰 <b>港股</b>"),
+        ("US", "🇺🇸 <b>美股</b>"),
+    ]
+    for m_type, header in groups:
+        sub = [idx for idx in indices if idx.market_type == m_type]
+        if not sub:
+            continue
+        lines.append(header)
+        for idx in sub:
+            lines.append(
+                f"• <b>{esc(idx.name)}</b>  <code>{idx.close:.2f}</code>  {_fmt_change(idx.change_pct, idx.change_amount)}"
+            )
+        lines.append("")
+
+    if include_tip:
         lines.append(
-            f"• <b>{esc(idx.name)}</b>  <code>{idx.close:.2f}</code>  {_fmt_change(idx.change_pct, idx.change_amount)}"
+            "💡 <i>直接发代码（如 <code>600519</code>、<code>00700</code>、<code>NVDA</code>）看交互卡片，或直接用自然语言提问！</i>"
         )
-    lines.extend(
-        [
-            "",
-            "💡 <i>直接发送股票代码（如 <code>600519</code>）查看交互卡片，或直接用自然语言提问（如「对比一下茅台和五粮液」）。</i>",
-        ]
-    )
-    return "\n".join(lines)
+    return "\n".join(lines).strip()
 
 
 def format_stock_quote(quote: StockQuote) -> str:
-    header = f"📈 <b>{esc(quote.name)}</b> (<code>{esc(quote.ts_code)}</code>)"
-    meta_parts = [p for p in (quote.industry, quote.market) if p]
+    badge = MARKET_BADGE.get(quote.market_type, quote.market_type)
+    header = f"📈 <b>{esc(quote.name)}</b> (<code>{esc(quote.ts_code)}</code>)  [{badge}]"
+    meta_parts = [p for p in (quote.industry, quote.currency) if p]
     meta = f"🏷 {' · '.join(esc(p) for p in meta_parts)}" if meta_parts else ""
 
     amount_yi = quote.amount / 1e8 if quote.amount else 0.0
@@ -69,7 +82,7 @@ def format_stock_quote(quote: StockQuote) -> str:
         [
             f"📅 交易日：<code>{esc(quote.trade_date)}</code>",
             "",
-            f"<b>最新价：<code>{quote.close:.2f}</code></b>  {_fmt_change(quote.change_pct, quote.change_amount)}",
+            f"<b>最新价：<code>{quote.close:.2f} {esc(quote.currency)}</code></b>  {_fmt_change(quote.change_pct, quote.change_amount)}",
             f"开盘：<code>{quote.open:.2f}</code>  最高：<code>{quote.high:.2f}</code>  最低：<code>{quote.low:.2f}</code>",
             f"成交额：<code>{amount_yi:.2f} 亿</code>  换手率：<code>{_fmt_num(quote.turnover_rate, '%')}</code>",
         ]
@@ -90,28 +103,31 @@ def format_stock_quote(quote: StockQuote) -> str:
 
 
 def format_finance(fin: FinanceSummary) -> str:
+    badge = MARKET_BADGE.get(fin.market_type, fin.market_type)
     lines = [
-        f"💰 <b>{esc(fin.name)}</b> (<code>{esc(fin.code)}</code>) 财务体检",
-        f"📅 报告期：<code>{esc(fin.report_date or '最新')}</code>",
+        f"💰 <b>{esc(fin.name)}</b> (<code>{esc(fin.code)}</code>) 财务体检  [{badge}]",
+        f"📅 报告期：<code>{esc(fin.report_date or '最新')}</code>  币种：<code>{esc(fin.currency)}</code>",
         "",
-        f"• 每股收益 (EPS)：<code>{_fmt_num(fin.eps, ' 元')}</code>",
+        f"• 每股收益 (EPS)：<code>{_fmt_num(fin.eps)}</code>",
         f"• 净资产收益率 (ROE)：<code>{_fmt_num(fin.roe, '%')}</code>",
-        f"• 每股净资产 (BPS)：<code>{_fmt_num(fin.bps, ' 元')}</code>",
+        f"• 每股净资产 (BPS)：<code>{_fmt_num(fin.bps)}</code>",
         f"• 销售毛利率：<code>{_fmt_num(fin.gross_margin, '%')}</code>",
         f"• 销售净利率：<code>{_fmt_num(fin.net_margin, '%')}</code>",
         f"• 营收同比增速：<code>{_fmt_num(fin.revenue_yoy, '%')}</code>",
         f"• 净利同比增速：<code>{_fmt_num(fin.profit_yoy, '%')}</code>",
-        f"• 资产负债率：<code>{_fmt_num(fin.debt_to_assets, '%')}</code>",
+        f"• 负债率 / D/E：<code>{_fmt_num(fin.debt_to_assets, '%')}</code>",
         f"• 流动比率：<code>{_fmt_num(fin.current_ratio)}</code>",
     ]
+    if fin.pe_ttm is not None or fin.pb is not None:
+        lines.append(f"• 估值：PE(TTM) <code>{_fmt_num(fin.pe_ttm)}</code> | PB <code>{_fmt_num(fin.pb)}</code>")
     return "\n".join(lines)
 
 
 def format_news(candidate: StockCandidate, items: list[NewsItem]) -> str:
     if not items:
-        return f"📰 暂未找到 <b>{esc(candidate.name)}</b> (<code>{esc(candidate.code)}</code>) 的近期新闻。"
+        return f"📰 暂未找到 <b>{esc(candidate.name)}</b> (<code>{esc(candidate.ts_code)}</code>) 的近期新闻。"
 
-    lines = [f"📰 <b>{esc(candidate.name)}</b> (<code>{esc(candidate.code)}</code>) 最新资讯", ""]
+    lines = [f"📰 <b>{esc(candidate.name)}</b> (<code>{esc(candidate.ts_code)}</code>) 最新资讯", ""]
     for i, item in enumerate(items[:6], start=1):
         title_html = (
             f'<a href="{html.escape(item.url, quote=True)}">{esc(item.title)}</a>'
@@ -158,31 +174,59 @@ def format_watchlist(items: list[WatchlistItem]) -> str:
         return (
             "⭐ <b>我的自选股</b>\n\n"
             "当前自选列表为空。\n"
-            "发送任意股票代码（如 <code>600519</code>），点击「⭐ 加自选」即可添加。"
+            "发送任意 A 股 / 港股 / 美股代码（如 <code>600519</code>、<code>00700</code>、<code>NVDA</code>），点击「⭐ 加自选」即可添加。"
         )
 
     lines = [f"⭐ <b>我的自选股</b>（共 {len(items)} 只）", ""]
     for item in items:
-        lines.append(f"• <b>{esc(item.name)}</b> (<code>{esc(item.code)}</code>)")
+        badge = MARKET_BADGE.get(item.market_type, item.market_type)
+        lines.append(f"• [{badge}] <b>{esc(item.name)}</b> (<code>{esc(item.code)}</code>)")
     lines.append("\n<i>点击下方按钮快速查看行情与分析 👇</i>")
+    return "\n".join(lines)
+
+
+def format_brief_status(sub: BriefSubscription, morning_time: str, evening_time: str) -> str:
+    m_state = "✅ 已开启" if sub.morning_enabled else "⬜ 未开启"
+    e_state = "✅ 已开启" if sub.evening_enabled else "⬜ 未开启"
+    return (
+        "⏰ <b>定时早晚报订阅中心</b>\n\n"
+        f"• ☀️ <b>盘前早报</b>（工作日 <code>{esc(morning_time)}</code>）：{m_state}\n"
+        f"• 🌙 <b>盘后晚报</b>（工作日 <code>{esc(evening_time)}</code>）：{e_state}\n\n"
+        "内容包含：全球大盘（A股/港股/美股）+ 你的自选股涨跌 + AI 简评。\n"
+        "<i>点击下方按钮一键开关或立即预览 👇</i>"
+    )
+
+
+def format_alerts(alerts: list[PriceAlert]) -> str:
+    if not alerts:
+        return (
+            "🔔 <b>价格预警列表</b>\n\n"
+            "当前没有生效中的价格预警。\n"
+            "使用示例：\n"
+            "• <code>/alert 600519 &gt; 1600</code>（突破 1600 提醒）\n"
+            "• <code>/alert NVDA &lt; 120</code>（跌破 120 提醒）"
+        )
+
+    lines = [f"🔔 <b>生效中的价格预警</b>（共 {len(alerts)} 条）", ""]
+    for a in alerts:
+        sym = "≥" if a.direction == "above" else "≤"
+        lines.append(
+            f"• <code>#{a.id}</code> <b>{esc(a.name)}</b> (<code>{esc(a.code)}</code>)  {sym} <code>{a.target_price:.2f}</code>"
+        )
+    lines.append("\n<i>发送 <code>/alert del 编号</code> 或点击下方按钮删除预警。</i>")
     return "\n".join(lines)
 
 
 def markdown_to_telegram_html(text: str) -> str:
     """Convert common LLM Markdown output into safe Telegram HTML without breaking on stray symbols."""
     escaped = html.escape(text, quote=False)
-
-    # Headings: ### Title -> <b>Title</b>
     escaped = re.sub(r"(?m)^#{1,6}\s+(.+)$", r"<b>\1</b>", escaped)
-    # Bold: **text** -> <b>text</b>
     escaped = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", escaped)
-    # Inline code: `code` -> <code>code</code>
     escaped = re.sub(r"`([^`\n]+)`", r"<code>\1</code>", escaped)
     return escaped
 
 
 def split_message(text: str, max_len: int = TELEGRAM_MAX_LEN) -> list[str]:
-    """Split a long message into Telegram-safe chunks at paragraph/newline boundaries."""
     if len(text) <= max_len:
         return [text]
 

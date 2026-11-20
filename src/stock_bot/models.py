@@ -1,4 +1,4 @@
-"""Pydantic domain models for market data, technical diagnosis, news, and watchlist."""
+"""Pydantic domain models for CN/HK/US market data, technical diagnosis, alerts, and watchlist."""
 
 from __future__ import annotations
 
@@ -6,17 +6,22 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+MarketType = Literal["CN", "HK", "US"]
+
 
 class StockCandidate(BaseModel):
-    code: str = Field(..., description="6-digit A-share stock code, e.g. 600519")
-    ts_code: str = Field(..., description="Exchange-qualified code, e.g. 600519.SH")
+    code: str = Field(..., description="Canonical display code, e.g. 600519, 00700, AAPL")
+    ts_code: str = Field(..., description="Market-qualified code, e.g. 600519.SH, 00700.HK, AAPL")
     name: str
     market: str = ""
+    market_type: MarketType = "CN"
+    yf_symbol: str = ""
 
 
 class IndexQuote(BaseModel):
     code: str
     name: str
+    market_type: MarketType = "CN"
     close: float
     change_pct: float
     change_amount: float | None = None
@@ -30,6 +35,8 @@ class StockQuote(BaseModel):
     ts_code: str
     name: str
     market: str = ""
+    market_type: MarketType = "CN"
+    currency: str = "CNY"
     industry: str = ""
     trade_date: str = ""
     open: float
@@ -44,12 +51,14 @@ class StockQuote(BaseModel):
     turnover_rate: float | None = None
     pe_ttm: float | None = None
     pb: float | None = None
-    total_mv: float | None = None  # Total market cap (亿元)
+    total_mv: float | None = None  # Total market cap (亿元 in local currency)
 
 
 class FinanceSummary(BaseModel):
     code: str
     name: str
+    market_type: MarketType = "CN"
+    currency: str = "CNY"
     report_date: str = ""
     eps: float | None = None
     roe: float | None = None
@@ -81,6 +90,7 @@ class TechnicalSignal(BaseModel):
 class TechnicalReport(BaseModel):
     code: str
     name: str
+    market_type: MarketType = "CN"
     trade_date: str
     latest_close: float
     ma5: float | None = None
@@ -110,4 +120,25 @@ class WatchlistItem(BaseModel):
     user_id: int
     code: str
     name: str
+    market_type: MarketType = "CN"
+    created_at: str
+
+
+class BriefSubscription(BaseModel):
+    chat_id: int
+    user_id: int
+    morning_enabled: bool = False
+    evening_enabled: bool = False
+
+
+class PriceAlert(BaseModel):
+    id: int
+    chat_id: int
+    user_id: int
+    code: str
+    name: str
+    market_type: MarketType = "CN"
+    direction: Literal["above", "below"]
+    target_price: float
+    triggered: bool = False
     created_at: str

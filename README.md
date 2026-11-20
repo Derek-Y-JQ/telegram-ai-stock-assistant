@@ -1,67 +1,49 @@
-# Telegram A-Share AI Stock Assistant (v2.0)
+# Telegram Global AI Stock Assistant (v2.5)
 
-现代化、全异步的 **A 股智能投研 Telegram 机器人**。支持自然语言多轮对话（Tool-Calling Financial Agent）、内联卡片交互、专业红涨绿跌 K 线图、多指标量化技术诊断、财务体检、舆情抓取与个人自选股管理。
-
----
-
-## ✨ v2.0 核心特性
-
-- **🤖 Tool-Calling AI 投研助理**：直接发送自然语言（如 *「对比一下贵州茅台和五粮液的财务与近期走势」*），大模型自动并行调用行情、财报、技术指标、新闻工具交叉分析，并保留上下文对话记忆。
-- **🎴 现代内联卡片交互（InlineKeyboard）**：发 6 位代码或 `/stock 名称`（支持中文模糊搜索）即出结构化卡片，一键原地切换 **日K / 周K / 月K**、查看 **量化技术诊断 / 财务体检 / 最新舆情 / AI 深度研报** 与 **加入自选**，告别刷屏。
-- **📊 专业 A 股 K 线图**：基于 `mplfinance` 绘制红涨绿跌蜡烛图 + `MA5/10/20/60` 均线 + 成交量 + `MACD` 副图，支持中文字体并安全释放图形内存。
-- **📐 毫秒级量化技术诊断引擎**：取代低效的在线训练 LSTM，计算 MA、MACD、RSI(14)、布林带、KDJ、ATR、20 日年化波动率及支撑/阻力位，输出 0–100 综合评分与信号明细。
-- **⚡ 全异步 + 零门槛数据源**：基于 `AkShare`（免费免 Token）为主数据源，支持可选 `Tushare Pro` 增强；内置异步 TTL 缓存与 `aiosqlite` 本地持久化。
-- **🔌 兼容任意 OpenAI 接口模型**：默认适配 DeepSeek（`deepseek-chat`），也可通过 `.env` 一键切换 OpenAI、通义千问等任意 OpenAI 兼容服务。
+现代化、全异步的 **全球股市智能投研 Telegram 机器人**，一站式覆盖 **🇨🇳 A 股 · 🇭🇰 港股 · 🇺🇸 美股**。支持自然语言多轮工具调用（实时展示思考与数据调取进度）、内联卡片交互、**Telegram Mini App 交互式 K 线与自选看板**、多指标量化技术诊断、每日定时早晚报与价格预警。
 
 ---
 
-## 🏗 项目结构
+## ✨ v2.5 核心特性
 
-```text
-src/stock_bot/
-├── config.py              # pydantic-settings 环境变量配置
-├── models.py              # Pydantic 领域数据模型
-├── main.py                # 应用入口与命令菜单注册
-├── storage/
-│   ├── cache.py           # 异步 TTL 内存缓存
-│   └── database.py        # aiosqlite（自选股 & 对话记忆）
-├── services/
-│   ├── market_data.py     # 统一异步行情/财务/新闻服务（AkShare + 可选 Tushare）
-│   ├── technical.py       # 多指标量化技术诊断引擎
-│   └── chart.py           # mplfinance 专业 A 股 K 线渲染服务
-├── agent/
-│   ├── tools.py           # OpenAI Function Calling 工具定义与分发
-│   └── financial_agent.py # 多轮工具调用 Agent & 一键深度研报
-└── bot/
-    ├── formatters.py      # 安全 HTML 卡片渲染与超长消息自动分段
-    ├── keyboards.py       # InlineKeyboard 内联按钮构建器
-    └── handlers.py        # 命令、内联回调与自然语言路由
-```
+- **🌍 全球三市场统一覆盖（A 股 + 港股 + 美股）**：
+  - 支持直接输入 `600519`（A股）、`00700` / `0700.HK`（港股）、`NVDA` / `AAPL`（美股），以及中文别名模糊搜索（`茅台`、`腾讯`、`英伟达`、`特斯拉`等）。
+  - 大盘概览同步展示上证/深证/创业板/科创50、恒生/恒生科技、标普500/纳斯达克/道琼斯。
+- **🧠 实时进度 + AI 思考流式展示**：
+  - 查股/画图/财务/舆情均带即时加载提示并原地更新，彻底告别“卡死感”。
+  - 自然语言对话与 AI 深度研报实时展示工具调用步骤与推理/生成进度（兼容 `deepseek-reasoner` 思考链输出）。
+- **📱 交互式 K 线与自选看板（Telegram Mini App）**：
+  - 内置 FastAPI + TradingView **Lightweight Charts** 暗黑金融看板，支持双指缩放、十字光标、日/周/月 K 线切换、MA5/10/20 与成交量，以及全球大盘与自选股联动。
+- **⏰ 定时早晚报 & 🔔 价格预警**：
+  - `/brief` 一键开启/关闭工作日盘前早报（09:00）与盘后晚报（15:30），汇总全球大盘 + 个人自选股 + AI 简评。
+  - `/alert NVDA > 150` 或 `/alert 600519 < 1400` 设置价格突破/跌破自动推送。
+- **☁️ 24/7 云端免电脑部署**：
+  - 内置 `Dockerfile`、`railway.json` 与 `/health` 健康检查，3 分钟部署到 Railway / Zeabur 后关掉电脑也能 24 小时在 iPhone 上随时使用，并自动解锁 HTTPS Mini App 交互看板。
 
 ---
 
 ## 🚀 快速开始
 
-### 1. 配置环境变量
+### 方式一：24/7 云端部署（推荐，不用开电脑 + 解锁交互式 Mini App）
+
+1. 打开 [Railway](https://railway.app) 或 [Zeabur](https://zeabur.com)，用 GitHub 登录并导入本仓库。
+2. 在 **Variables（环境变量）** 中填入：
+   - `TELEGRAM_BOT_TOKEN`：你的 Bot Token
+   - `LLM_API_KEY`：你的 DeepSeek / OpenAI / Gemini / Qwen API Key
+   - `LLM_BASE_URL` & `LLM_MODEL`（默认 DeepSeek `deepseek-chat`，可按 `.env.example` 自由切换）
+3. 为服务生成一个公网 HTTPS 域名（如 `https://your-app.up.railway.app`），把该域名填到环境变量 `WEBAPP_URL` 中并重新部署，即可在 Telegram 卡片中看到 **📱 打开交互式 K 线看板** 按钮！
+4. *(可选)* 挂载一个 Volume 到 `/app/data`，持久化保存自选股、预警和订阅记录。
+
+### 方式二：本地运行（推荐使用 `uv`）
 
 ```bash
 cp .env.example .env
-```
-
-编辑 `.env`，填入你的 `TELEGRAM_BOT_TOKEN`（从 [@BotFather](https://t.me/BotFather) 获取）和 `LLM_API_KEY`（如 DeepSeek API Key）。
-
-### 2. 本地运行（推荐使用 `uv`）
-
-```bash
+# 编辑 .env 填入 TELEGRAM_BOT_TOKEN 与 LLM_API_KEY（国内环境可设 TELEGRAM_PROXY）
 uv sync --extra dev
 uv run stock-bot
 ```
 
-### 3. Docker 一键部署
-
-```bash
-docker compose up -d --build
-```
+启动后可同时在浏览器打开 `http://127.0.0.1:8080` 体验交互式 K 线看板。
 
 ---
 
@@ -69,20 +51,21 @@ docker compose up -d --build
 
 | 方式 / 指令 | 说明 |
 | --- | --- |
-| 直接发 `600519` | 立即打开「贵州茅台」交互式行情卡片 |
-| `/stock 茅台` | 中文模糊搜索并选择标的 |
-| 直接发自然语言 | 如 *「帮我看看宁德时代最近的技术面和新闻」*、*「今天大盘怎么样」* |
-| `/market` | 查看上证、深证、创业板、科创50 大盘概览 |
+| 直接发 `600519` / `00700` / `NVDA` | 立即打开对应市场交互式行情卡片 |
+| `/stock 茅台` 或 `/stock 英伟达` | 中文模糊搜索 A股 / 港股 / 美股 |
+| 直接发自然语言 | 如 *「对比一下英伟达和苹果的盈利能力与技术面」* |
+| `/market` | 全球大盘概览（A股 + 港股 + 美股） |
 | `/watch` | 查看与管理我的自选股 |
+| `/brief` | 订阅/预览每日盘前早报与盘后晚报 |
+| `/alert NVDA > 150` | 设置价格预警（`/alert list` 查看生效列表） |
 | `/clear` | 清空当前会话的 AI 对话记忆 |
-| `/help` | 查看使用指南 |
 
 ---
 
-## 🧪 运行测试与代码检查
+## 🧪 测试与代码检查
 
 ```bash
-uv run pytest
+uv run pytest -v
 uv run ruff check src tests
 ```
 

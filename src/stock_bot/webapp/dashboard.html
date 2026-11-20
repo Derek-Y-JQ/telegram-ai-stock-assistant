@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>全球股市交互式看板</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://unpkg.com/lightweight-charts@4.2.1/dist/lightweight-charts.standalone.production.js"></script>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --card: #19212a;
+      --border: #263241;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --up: #ef5350;
+      --down: #26a69a;
+      --accent: #3b82f6;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif;
+      padding: 12px 12px 72px;
+      -webkit-font-smoothing: antialiased;
+    }
+    .search-bar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .search-bar input {
+      flex: 1;
+      background: var(--card);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 14px;
+      outline: none;
+    }
+    .search-bar button {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      padding: 0 16px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+    .quote-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 8px;
+    }
+    .stock-title { font-size: 18px; font-weight: 700; }
+    .badge {
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: #263241;
+      color: #93c5fd;
+      margin-left: 6px;
+    }
+    .price-row {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      margin-top: 6px;
+    }
+    .price-main { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .up { color: var(--up); }
+    .down { color: var(--down); }
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 10px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .meta-grid strong { display: block; color: var(--text); font-size: 13px; margin-top: 2px; }
+    .period-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .period-btn {
+      flex: 1;
+      background: var(--bg);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 7px 0;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .period-btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    #chart-container { width: 100%; height: 340px; border-radius: 10px; overflow: hidden; }
+    .legend {
+      display: flex;
+      gap: 12px;
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .list-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 4px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+    }
+    .list-item:last-child { border-bottom: none; }
+    .sub-text { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .tabbar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      display: flex;
+      background: #141b23;
+      border-top: 1px solid var(--border);
+      padding: 8px 12px;
+      gap: 8px;
+    }
+    .tabbar button {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 600;
+      padding: 8px 0;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .tabbar button.active { background: var(--card); color: #fff; }
+    .hidden { display: none; }
+    .status { text-align: center; color: var(--muted); padding: 24px 0; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="search-bar">
+    <input id="symbol-input" type="text" placeholder="输入代码或名称：600519 / 00700 / NVDA / 茅台" />
+    <button id="search-btn">查看</button>
+  </div>
+
+  <!-- Tab 1: Chart -->
+  <section id="tab-chart">
+    <div class="card" id="quote-card">
+      <div class="status">正在加载行情数据...</div>
+    </div>
+    <div class="card">
+      <div class="period-tabs">
+        <button class="period-btn active" data-period="daily">日K</button>
+        <button class="period-btn" data-period="weekly">周K</button>
+        <button class="period-btn" data-period="monthly">月K</button>
+      </div>
+      <div class="legend">
+        <span style="color:#ff9800">● MA5</span>
+        <span style="color:#2196f3">● MA10</span>
+        <span style="color:#ab47bc">● MA20</span>
+      </div>
+      <div id="chart-container"></div>
+    </div>
+  </section>
+
+  <!-- Tab 2: Global Market -->
+  <section id="tab-market" class="hidden">
+    <div class="card" id="market-list">
+      <div class="status">正在加载全球大盘指数...</div>
+    </div>
+  </section>
+
+  <!-- Tab 3: Watchlist -->
+  <section id="tab-watch" class="hidden">
+    <div class="card" id="watch-list">
+      <div class="status">正在加载自选股...</div>
+    </div>
+  </section>
+
+  <nav class="tabbar">
+    <button class="active" data-tab="chart">📊 K线图表</button>
+    <button data-tab="market">🌍 全球大盘</button>
+    <button data-tab="watch">⭐ 我的自选</button>
+  </nav>
+
+  <script>
+    const tg = window.Telegram && window.Telegram.WebApp;
+    if (tg) { tg.ready(); tg.expand(); }
+
+    const params = new URLSearchParams(window.location.search);
+    let currentSymbol = params.get("symbol") || "600519";
+    let currentPeriod = "daily";
+    const userId = params.get("user_id") || (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id) || "";
+
+    document.getElementById("symbol-input").value = currentSymbol;
+
+    let chart = null;
+    function initChart() {
+      const container = document.getElementById("chart-container");
+      container.innerHTML = "";
+      chart = LightweightCharts.createChart(container, {
+        layout: { background: { color: "#19212a" }, textColor: "#9ca3af" },
+        grid: { vertLines: { color: "#232e3b" }, horzLines: { color: "#232e3b" } },
+        crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+        rightPriceScale: { borderColor: "#263241" },
+        timeScale: { borderColor: "#263241", timeVisible: true },
+        width: container.clientWidth,
+        height: 340,
+      });
+      window.addEventListener("resize", () => {
+        if (chart) chart.applyOptions({ width: container.clientWidth });
+      });
+    }
+
+    async function loadStock(symbol, period) {
+      currentSymbol = symbol;
+      currentPeriod = period;
+      document.getElementById("symbol-input").value = symbol;
+      document.getElementById("quote-card").innerHTML = `<div class="status">⏳ 正在加载 ${symbol} 行情...</div>`;
+
+      try {
+        const [qRes, kRes] = await Promise.all([
+          fetch(`/api/quote?symbol=${encodeURIComponent(symbol)}`),
+          fetch(`/api/kline?symbol=${encodeURIComponent(symbol)}&period=${period}`),
+        ]);
+        if (!qRes.ok || !kRes.ok) throw new Error("标的未找到或数据源暂不可用");
+        const q = await qRes.json();
+        const k = await kRes.json();
+
+        const cls = q.change_pct >= 0 ? "up" : "down";
+        const sign = q.change_pct > 0 ? "+" : "";
+        document.getElementById("quote-card").innerHTML = `
+          <div class="quote-head">
+            <div><span class="stock-title">${q.name}</span><span class="badge">${q.market_type} · ${q.ts_code}</span></div>
+            <span class="sub-text">${q.trade_date}</span>
+          </div>
+          <div class="price-row">
+            <span class="price-main ${cls}">${q.close.toFixed(2)}</span>
+            <span class="${cls}" style="font-weight:600">${sign}${q.change_pct.toFixed(2)}% ${q.currency}</span>
+          </div>
+          <div class="meta-grid">
+            <div>开盘<strong>${q.open.toFixed(2)}</strong></div>
+            <div>最高<strong>${q.high.toFixed(2)}</strong></div>
+            <div>最低<strong>${q.low.toFixed(2)}</strong></div>
+          </div>
+        `;
+
+        initChart();
+        const candleSeries = chart.addCandlestickSeries({
+          upColor: "#ef5350", downColor: "#26a69a",
+          borderUpColor: "#ef5350", borderDownColor: "#26a69a",
+          wickUpColor: "#ef5350", wickDownColor: "#26a69a",
+        });
+        candleSeries.setData(k.candles);
+
+        const volSeries = chart.addHistogramSeries({
+          priceFormat: { type: "volume" },
+          priceScaleId: "",
+        });
+        volSeries.priceScale().applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
+        volSeries.setData(k.volumes);
+
+        if (k.ma5.length) {
+          const s = chart.addLineSeries({ color: "#ff9800", lineWidth: 1.2, priceLineVisible: false });
+          s.setData(k.ma5);
+        }
+        if (k.ma10.length) {
+          const s = chart.addLineSeries({ color: "#2196f3", lineWidth: 1.2, priceLineVisible: false });
+          s.setData(k.ma10);
+        }
+        if (k.ma20.length) {
+          const s = chart.addLineSeries({ color: "#ab47bc", lineWidth: 1.2, priceLineVisible: false });
+          s.setData(k.ma20);
+        }
+        chart.timeScale().fitContent();
+      } catch (err) {
+        document.getElementById("quote-card").innerHTML = `<div class="status">⚠️ ${err.message}</div>`;
+      }
+    }
+
+    async function loadMarket() {
+      const box = document.getElementById("market-list");
+      box.innerHTML = `<div class="status">⏳ 正在加载全球大盘...</div>`;
+      try {
+        const res = await fetch("/api/market");
+        const data = await res.json();
+        if (!data.indices.length) {
+          box.innerHTML = `<div class="status">暂无指数数据</div>`;
+          return;
+        }
+        box.innerHTML = data.indices.map(idx => {
+          const cls = idx.change_pct >= 0 ? "up" : "down";
+          const sign = idx.change_pct > 0 ? "+" : "";
+          return `
+            <div class="list-item">
+              <div><strong>${idx.name}</strong><div class="sub-text">${idx.market_type} · ${idx.code}</div></div>
+              <div style="text-align:right">
+                <strong class="${cls}">${idx.close.toFixed(2)}</strong>
+                <div class="sub-text ${cls}">${sign}${idx.change_pct.toFixed(2)}%</div>
+              </div>
+            </div>
+          `;
+        }).join("");
+      } catch (err) {
+        box.innerHTML = `<div class="status">⚠️ 加载失败</div>`;
+      }
+    }
+
+    async function loadWatchlist() {
+      const box = document.getElementById("watch-list");
+      if (!userId) {
+        box.innerHTML = `<div class="status">请从 Telegram 机器人内打开以同步你的自选股</div>`;
+        return;
+      }
+      box.innerHTML = `<div class="status">⏳ 正在加载自选股...</div>`;
+      try {
+        const res = await fetch(`/api/watchlist?user_id=${encodeURIComponent(userId)}`);
+        const data = await res.json();
+        if (!data.items.length) {
+          box.innerHTML = `<div class="status">自选列表为空，先在机器人里添加自选股吧 ⭐</div>`;
+          return;
+        }
+        box.innerHTML = data.items.map(it => `
+          <div class="list-item" onclick="openFromWatch('${it.code}')">
+            <div><strong>${it.name}</strong><div class="sub-text">${it.market_type} · ${it.code}</div></div>
+            <span style="color:#93c5fd;font-size:13px">查看 K 线 →</span>
+          </div>
+        `).join("");
+      } catch (err) {
+        box.innerHTML = `<div class="status">⚠️ 加载失败</div>`;
+      }
+    }
+
+    function openFromWatch(code) {
+      switchTab("chart");
+      loadStock(code, currentPeriod);
+    }
+
+    function switchTab(tab) {
+      ["chart", "market", "watch"].forEach(t => {
+        document.getElementById(`tab-${t}`).classList.toggle("hidden", t !== tab);
+      });
+      document.querySelectorAll(".tabbar button").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.tab === tab);
+      });
+      if (tab === "market") loadMarket();
+      if (tab === "watch") loadWatchlist();
+    }
+
+    document.querySelectorAll(".tabbar button").forEach(btn => {
+      btn.addEventListener("click", () => switchTab(btn.dataset.tab));
+    });
+    document.querySelectorAll(".period-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".period-btn").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        loadStock(currentSymbol, btn.dataset.period);
+      });
+    });
+    document.getElementById("search-btn").addEventListener("click", () => {
+      const val = document.getElementById("symbol-input").value.trim();
+      if (val) { switchTab("chart"); loadStock(val, currentPeriod); }
+    });
+    document.getElementById("symbol-input").addEventListener("keydown", e => {
+      if (e.key === "Enter") document.getElementById("search-btn").click();
+    });
+
+    loadStock(currentSymbol, currentPeriod);
+  </script>
+</body>
+</html>

@@ -1,4 +1,4 @@
-"""OpenAI-compatible Tool definitions and async executor for A-share financial analysis."""
+"""OpenAI-compatible Tool definitions and async executor for CN/HK/US financial analysis."""
 
 from __future__ import annotations
 
@@ -11,12 +11,21 @@ from stock_bot.services.technical import TechnicalAnalyzer
 
 logger = logging.getLogger(__name__)
 
+TOOL_LABELS: dict[str, str] = {
+    "get_market_overview": "全球大盘概览",
+    "search_stock": "搜索标的",
+    "get_stock_quote": "查询实时行情",
+    "get_stock_finance": "获取财务指标",
+    "get_stock_news": "抓取最新舆情",
+    "get_technical_diagnosis": "量化技术诊断",
+}
+
 TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
             "name": "get_market_overview",
-            "description": "获取 A 股主要大盘指数（上证指数、深证成指、创业板指、科创50）的最新点位与涨跌幅。",
+            "description": "获取全球核心大盘指数（A股上证/深证/创业板/科创50、港股恒生/恒生科技、美股标普500/纳斯达克/道琼斯）最新点位与涨跌幅。",
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
     },
@@ -24,11 +33,11 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "search_stock",
-            "description": "根据中文名称或代码关键词搜索匹配的 A 股股票候选列表。",
+            "description": "根据中文名称、英文代码或数字代码搜索 A 股、港股或美股标的候选列表。",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "股票中文名称或代码关键词，如 '茅台'、'宁德时代'、'600519'"},
+                    "query": {"type": "string", "description": "关键词，如 '茅台'、'腾讯'、'英伟达'、'600519'、'00700'、'NVDA'"},
                 },
                 "required": ["query"],
             },
@@ -38,11 +47,11 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "get_stock_quote",
-            "description": "获取单只 A 股的最新行情、涨跌幅、成交量额、行业与总市值等基础信息。",
+            "description": "获取单只 A 股、港股或美股的最新行情、涨跌幅、成交量额、行业与估值等基础信息。",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "股票代码或中文名称，如 '600519' 或 '贵州茅台'"},
+                    "query": {"type": "string", "description": "股票代码或名称，如 '600519'、'00700.HK'、'AAPL'、'英伟达'"},
                 },
                 "required": ["query"],
             },
@@ -52,11 +61,11 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "get_stock_finance",
-            "description": "获取单只 A 股最新财报核心财务指标（EPS、ROE、毛利率、净利率、资产负债率、营收/净利同比增速等）。",
+            "description": "获取单只 A 股、港股或美股的核心财务指标（EPS、ROE、毛利率、净利率、负债率、营收/净利增速、PE/PB 等）。",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "股票代码或中文名称"},
+                    "query": {"type": "string", "description": "股票代码或名称"},
                 },
                 "required": ["query"],
             },
@@ -66,11 +75,11 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "get_stock_news",
-            "description": "获取单只 A 股近期相关新闻资讯，用于舆情与事件驱动分析。",
+            "description": "获取单只 A 股、港股或美股的近期相关新闻资讯，用于舆情与事件驱动分析。",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "股票代码或中文名称"},
+                    "query": {"type": "string", "description": "股票代码或名称"},
                     "limit": {"type": "integer", "description": "返回新闻条数，默认 6", "default": 6},
                 },
                 "required": ["query"],
@@ -81,11 +90,11 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "get_technical_diagnosis",
-            "description": "对单只 A 股进行多指标量化技术面诊断（MA均线、MACD、RSI、布林带、KDJ、波动率、支撑阻力位及综合评分）。",
+            "description": "对单只 A 股、港股或美股进行多指标量化技术面诊断（MA均线、MACD、RSI、布林带、KDJ、波动率、支撑阻力位及综合评分）。",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "股票代码或中文名称"},
+                    "query": {"type": "string", "description": "股票代码或名称"},
                 },
                 "required": ["query"],
             },

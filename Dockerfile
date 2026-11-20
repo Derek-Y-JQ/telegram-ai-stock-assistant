@@ -2,7 +2,8 @@ FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    MPLBACKEND=Agg
+    MPLBACKEND=Agg \
+    WEBAPP_PORT=8080
 
 WORKDIR /app
 
@@ -19,5 +20,7 @@ COPY src ./src
 RUN uv pip install --system --no-cache .
 
 RUN mkdir -p /app/data
+
+EXPOSE 8080
 
 CMD ["stock-bot"]
