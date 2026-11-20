@@ -106,13 +106,16 @@ class MarketDataService:
         if not q:
             return []
 
-        # Direct code match first
+        # Direct code match first — resilient even if full directory fetch fails
         try:
             code, ts_code, _ = normalize_stock_code(q)
-            directory = await self._get_stock_directory()
-            for item in directory:
-                if item.code == code:
-                    return [item]
+            try:
+                directory = await self._get_stock_directory()
+                for item in directory:
+                    if item.code == code:
+                        return [item]
+            except Exception as exc:
+                logger.warning("Stock directory fetch failed while resolving code %s: %s", code, exc)
             return [StockCandidate(code=code, ts_code=ts_code, name=code, market=ts_code.split(".")[1])]
         except ValueError:
             pass
@@ -157,29 +160,35 @@ class MarketDataService:
             ]
             results: list[IndexQuote] = []
             for symbol, code, name in targets:
-                try:
-                    df = await asyncio.to_thread(ak.stock_zh_index_daily_em, symbol=symbol)
-                    if df is None or df.empty:
-                        continue
-                    latest = df.iloc[-1]
-                    close = float(latest["close"])
-                    pre_close = float(df.iloc[-2]["close"]) if len(df) >= 2 else float(latest["open"])
-                    change_amount = close - pre_close
-                    change_pct = (change_amount / pre_close * 100.0) if pre_close else 0.0
-                    results.append(
-                        IndexQuote(
-                            code=code,
-                            name=name,
-                            close=round(close, 2),
-                            change_pct=round(change_pct, 2),
-                            change_amount=round(change_amount, 2),
-                            volume=_safe_float(latest.get("volume")),
-                            amount=_safe_float(latest.get("amount")),
-                            trade_date=str(latest.get("date", ""))[:10],
-                        )
+                df = None
+                for fetcher in (ak.stock_zh_index_daily_em, ak.stock_zh_index_daily):
+                    try:
+                        df = await asyncio.to_thread(fetcher, symbol=symbol)
+                        if df is not None and not df.empty:
+                            break
+                    except Exception as exc:
+                        logger.debug("Index fetch %s via %s failed: %s", symbol, fetcher.__name__, exc)
+                if df is None or df.empty:
+                    logger.warning("All index fetchers failed for %s", symbol)
+                    continue
+
+                latest = df.iloc[-1]
+                close = float(latest["close"])
+                pre_close = float(df.iloc[-2]["close"]) if len(df) >= 2 else float(latest["open"])
+                change_amount = close - pre_close
+                change_pct = (change_amount / pre_close * 100.0) if pre_close else 0.0
+                results.append(
+                    IndexQuote(
+                        code=code,
+                        name=name,
+                        close=round(close, 2),
+                        change_pct=round(change_pct, 2),
+                        change_amount=round(change_amount, 2),
+                        volume=_safe_float(latest.get("volume")),
+                        amount=_safe_float(latest.get("amount")),
+                        trade_date=str(latest.get("date", ""))[:10],
                     )
-                except Exception as exc:
-                    logger.warning("Failed to fetch index %s: %s", symbol, exc)
+                )
             return results
 
         return await self.cache.get_or_set("market_overview", _fetch, ttl=120)
@@ -203,24 +212,64 @@ class MarketDataService:
 
         async def _fetch() -> pd.DataFrame:
             end_dt = datetime.now()
-            # Pull enough history so MA60 / weekly / monthly indicators have warm-up bars
             lookback_days = max(days, 180)
             if period == "weekly":
                 lookback_days = max(days, 730)
             elif period == "monthly":
                 lookback_days = max(days, 1825)
             start_dt = end_dt - timedelta(days=lookback_days)
+            start_str = start_dt.strftime("%Y%m%d")
+            end_str = end_dt.strftime("%Y%m%d")
 
-            df = await asyncio.to_thread(
-                ak.stock_zh_a_hist,
-                symbol=candidate.code,
-                period=period,
-                start_date=start_dt.strftime("%Y%m%d"),
-                end_date=end_dt.strftime("%Y%m%d"),
-                adjust="qfq",
-            )
+            df = None
+            try:
+                df = await asyncio.to_thread(
+                    ak.stock_zh_a_hist,
+                    symbol=candidate.code,
+                    period=period,
+                    start_date=start_str,
+                    end_date=end_str,
+                    adjust="qfq",
+                )
+            except Exception as exc:
+                logger.warning("Primary EastMoney kline failed for %s: %s", candidate.code, exc)
+
+            # Fallback to Tencent daily history (and resample for weekly/monthly if needed)
             if df is None or df.empty:
-                raise LookupError(f"暂无 {candidate.name}({candidate.code}) 的历史行情数据。")
+                _, _, tx_symbol = normalize_stock_code(candidate.code)
+                tx_df = await asyncio.to_thread(
+                    ak.stock_zh_a_hist_tx,
+                    symbol=tx_symbol,
+                    start_date=start_str,
+                    end_date=end_str,
+                    adjust="qfq",
+                )
+                if tx_df is None or tx_df.empty:
+                    raise LookupError(f"暂无 {candidate.name}({candidate.code}) 的历史行情数据。")
+                tx_df = tx_df.rename(
+                    columns={
+                        "date": "Date",
+                        "open": "Open",
+                        "high": "High",
+                        "low": "Low",
+                        "close": "Close",
+                        "amount": "Volume",
+                    }
+                )
+                tx_df["Date"] = pd.to_datetime(tx_df["Date"])
+                tx_df = tx_df.sort_values("Date").set_index("Date")
+                for col in ("Open", "High", "Low", "Close", "Volume"):
+                    tx_df[col] = pd.to_numeric(tx_df[col], errors="coerce")
+                tx_df = tx_df.dropna(subset=["Open", "High", "Low", "Close"])
+                if period == "weekly":
+                    tx_df = tx_df.resample("W-FRI").agg(
+                        {"Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum"}
+                    ).dropna()
+                elif period == "monthly":
+                    tx_df = tx_df.resample("ME").agg(
+                        {"Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum"}
+                    ).dropna()
+                return tx_df
 
             col_map = {
                 "日期": "Date",
@@ -265,6 +314,7 @@ class MarketDataService:
                 change_amt = close - pre_close
                 change_pct = (change_amt / pre_close) * 100.0
 
+            stock_name = candidate.name
             industry = ""
             total_mv: float | None = None
             pe_ttm: float | None = None
@@ -274,6 +324,8 @@ class MarketDataService:
                 info_df = await asyncio.to_thread(ak.stock_individual_info_em, symbol=candidate.code)
                 if info_df is not None and not info_df.empty:
                     info_map = dict(zip(info_df["item"], info_df["value"], strict=False))
+                    if stock_name == candidate.code and info_map.get("股票简称"):
+                        stock_name = str(info_map["股票简称"]).strip()
                     industry = str(info_map.get("行业", "") or "")
                     mv_raw = _safe_float(info_map.get("总市值"))
                     if mv_raw is not None:
@@ -303,7 +355,7 @@ class MarketDataService:
             return StockQuote(
                 code=candidate.code,
                 ts_code=candidate.ts_code,
-                name=candidate.name,
+                name=stock_name,
                 market=candidate.market,
                 industry=industry,
                 trade_date=df.index[-1].strftime("%Y-%m-%d"),

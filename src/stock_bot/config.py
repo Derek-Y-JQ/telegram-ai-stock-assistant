@@ -17,6 +17,10 @@ class Settings(BaseSettings):
 
     # Telegram
     telegram_bot_token: str = Field(..., description="Telegram Bot API token from @BotFather")
+    telegram_proxy: str | None = Field(
+        default=None,
+        description="Optional proxy URL ONLY for Telegram API, e.g. http://127.0.0.1:7890",
+    )
 
     # LLM (OpenAI-compatible: DeepSeek, OpenAI, Qwen, etc.)
     llm_api_key: str = Field(..., description="API key for the LLM provider")

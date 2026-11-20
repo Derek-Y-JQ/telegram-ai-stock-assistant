@@ -56,7 +56,11 @@ def build_application(settings: Settings) -> Application:
         )
         logger.info("Stock Bot initialized successfully (model=%s).", settings.llm_model)
 
-    app = Application.builder().token(settings.telegram_bot_token).post_init(_post_init).build()
+    builder = Application.builder().token(settings.telegram_bot_token).post_init(_post_init)
+    if settings.telegram_proxy:
+        builder = builder.proxy(settings.telegram_proxy).get_updates_proxy(settings.telegram_proxy)
+        logger.info("Configured Telegram-only proxy: %s", settings.telegram_proxy)
+    app = builder.build()
 
     app.add_handler(CommandHandler("start", handlers.start))
     app.add_handler(CommandHandler("help", handlers.help_cmd))
