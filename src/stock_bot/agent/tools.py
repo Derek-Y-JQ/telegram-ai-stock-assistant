@@ -1,4 +1,4 @@
-"""OpenAI-compatible Tool definitions and async executor for CN/HK/US financial analysis."""
+"""OpenAI-compatible Tool definitions and async executor for CN/HK/US/SG financial analysis."""
 
 from __future__ import annotations
 
@@ -6,18 +6,29 @@ import json
 import logging
 from typing import Any
 
+from stock_bot.models import Lang
 from stock_bot.services.market_data import MarketDataService
 from stock_bot.services.technical import TechnicalAnalyzer
 
 logger = logging.getLogger(__name__)
 
-TOOL_LABELS: dict[str, str] = {
-    "get_market_overview": "全球大盘概览",
-    "search_stock": "搜索标的",
-    "get_stock_quote": "查询实时行情",
-    "get_stock_finance": "获取财务指标",
-    "get_stock_news": "抓取最新舆情",
-    "get_technical_diagnosis": "量化技术诊断",
+TOOL_LABELS: dict[Lang, dict[str, str]] = {
+    "en": {
+        "get_market_overview": "Global Market Overview",
+        "search_stock": "Stock Search",
+        "get_stock_quote": "Live Quote",
+        "get_stock_finance": "Financials",
+        "get_stock_news": "Latest News",
+        "get_technical_diagnosis": "Technical Diagnosis",
+    },
+    "zh": {
+        "get_market_overview": "全球大盘概览",
+        "search_stock": "搜索标的",
+        "get_stock_quote": "查询实时行情",
+        "get_stock_finance": "获取财务指标",
+        "get_stock_news": "抓取最新舆情",
+        "get_technical_diagnosis": "量化技术诊断",
+    },
 }
 
 TOOL_DEFINITIONS: list[dict[str, Any]] = [
@@ -25,7 +36,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "get_market_overview",
-            "description": "获取全球核心大盘指数（A股上证/深证/创业板/科创50、港股恒生/恒生科技、美股标普500/纳斯达克/道琼斯）最新点位与涨跌幅。",
+            "description": "Get latest levels and daily changes of major global indices (US S&P 500/NASDAQ/Dow, Singapore STI, Hong Kong Hang Seng/HSTECH, China SSE/SZSE/ChiNext/STAR 50).",
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
     },
@@ -33,11 +44,11 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "search_stock",
-            "description": "根据中文名称、英文代码或数字代码搜索 A 股、港股或美股标的候选列表。",
+            "description": "Search for stocks across US, Singapore (SGX), Hong Kong (HKEX), and China A-Shares by ticker, code, or company name.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "关键词，如 '茅台'、'腾讯'、'英伟达'、'600519'、'00700'、'NVDA'"},
+                    "query": {"type": "string", "description": "Keyword, e.g. 'NVDA', 'DBS', 'D05.SI', '00700', '600519', 'Moutai', '腾讯'"},
                 },
                 "required": ["query"],
             },
@@ -47,11 +58,11 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "get_stock_quote",
-            "description": "获取单只 A 股、港股或美股的最新行情、涨跌幅、成交量额、行业与估值等基础信息。",
+            "description": "Get latest price, daily change, OHLCV, market cap, and valuation for a US, SGX, HK, or CN stock.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "股票代码或名称，如 '600519'、'00700.HK'、'AAPL'、'英伟达'"},
+                    "query": {"type": "string", "description": "Stock symbol or name, e.g. 'AAPL', 'D05.SI', '00700.HK', '600519'"},
                 },
                 "required": ["query"],
             },
@@ -61,11 +72,11 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "get_stock_finance",
-            "description": "获取单只 A 股、港股或美股的核心财务指标（EPS、ROE、毛利率、净利率、负债率、营收/净利增速、PE/PB 等）。",
+            "description": "Get key financial indicators (EPS, ROE, margins, debt ratio, revenue/earnings growth, PE/PB) for a US, SGX, HK, or CN stock.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "股票代码或名称"},
+                    "query": {"type": "string", "description": "Stock symbol or name"},
                 },
                 "required": ["query"],
             },
@@ -75,12 +86,12 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "get_stock_news",
-            "description": "获取单只 A 股、港股或美股的近期相关新闻资讯，用于舆情与事件驱动分析。",
+            "description": "Get recent news articles for a US, SGX, HK, or CN stock for sentiment and catalyst analysis.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "股票代码或名称"},
-                    "limit": {"type": "integer", "description": "返回新闻条数，默认 6", "default": 6},
+                    "query": {"type": "string", "description": "Stock symbol or name"},
+                    "limit": {"type": "integer", "description": "Number of articles, default 6", "default": 6},
                 },
                 "required": ["query"],
             },
@@ -90,11 +101,11 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "get_technical_diagnosis",
-            "description": "对单只 A 股、港股或美股进行多指标量化技术面诊断（MA均线、MACD、RSI、布林带、KDJ、波动率、支撑阻力位及综合评分）。",
+            "description": "Run multi-indicator quantitative technical analysis (MA, MACD, RSI, Bollinger Bands, KDJ, volatility, support/resistance, score) for a US, SGX, HK, or CN stock.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "股票代码或名称"},
+                    "query": {"type": "string", "description": "Stock symbol or name"},
                 },
                 "required": ["query"],
             },
@@ -109,7 +120,7 @@ class FinancialToolset:
     def __init__(self, market_data: MarketDataService) -> None:
         self.market_data = market_data
 
-    async def execute(self, name: str, arguments_json: str) -> str:
+    async def execute(self, name: str, arguments_json: str, lang: Lang = "en") -> str:
         try:
             args = json.loads(arguments_json) if arguments_json else {}
         except json.JSONDecodeError:
@@ -137,7 +148,7 @@ class FinancialToolset:
                 }
             elif name == "get_technical_diagnosis":
                 candidate, df = await self.market_data.get_kline(str(args.get("query", "")), period="daily", days=180)
-                report = TechnicalAnalyzer.analyze(candidate.code, candidate.name, df)
+                report = TechnicalAnalyzer.analyze(candidate.code, candidate.name, df, lang=lang)
                 payload = report.model_dump()
             else:
                 payload = {"error": f"Unknown tool: {name}"}

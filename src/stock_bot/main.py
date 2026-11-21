@@ -52,7 +52,6 @@ def build_application(settings: Settings) -> Application:
     async def _post_init(app: Application) -> None:
         await database.init()
 
-        # Start scheduled briefings & price alert monitor
         scheduler = BriefingScheduler(
             settings=settings,
             bot=app.bot,
@@ -64,7 +63,6 @@ def build_application(settings: Settings) -> Application:
         scheduler.start()
         state["scheduler"] = scheduler
 
-        # Start embedded FastAPI Mini App server in background on the same event loop
         if settings.webapp_enabled:
             fastapi_app = create_webapp(market_data=market_data, database=database)
             uv_config = uvicorn.Config(
@@ -85,17 +83,18 @@ def build_application(settings: Settings) -> Application:
 
         await app.bot.set_my_commands(
             [
-                BotCommand("start", "启动助理并查看全球大盘"),
-                BotCommand("market", "全球核心大盘指数（A股/港股/美股）"),
-                BotCommand("stock", "搜索股票卡片（如 /stock 茅台 或 /stock NVDA）"),
-                BotCommand("watch", "查看与管理我的自选股"),
-                BotCommand("brief", "订阅/预览每日盘前早报与盘后晚报"),
-                BotCommand("alert", "设置价格预警（如 /alert NVDA > 150）"),
-                BotCommand("clear", "清空当前 AI 对话记忆"),
-                BotCommand("help", "查看使用指南"),
+                BotCommand("start", "Start & global market overview"),
+                BotCommand("market", "Global indices (US / SG / HK / CN)"),
+                BotCommand("stock", "Search stock card (e.g. /stock NVDA or /stock DBS)"),
+                BotCommand("watch", "View & manage watchlist"),
+                BotCommand("brief", "Daily morning & evening briefings"),
+                BotCommand("alert", "Set price alerts (e.g. /alert NVDA > 150)"),
+                BotCommand("lang", "Switch language (English / 中文)"),
+                BotCommand("clear", "Clear AI chat memory"),
+                BotCommand("help", "Usage guide"),
             ]
         )
-        logger.info("Stock Bot v2.5 initialized successfully (model=%s).", settings.llm_model)
+        logger.info("Stock Bot v2.6 initialized successfully (model=%s).", settings.llm_model)
 
     async def _post_shutdown(app: Application) -> None:
         scheduler = state.get("scheduler")
@@ -129,6 +128,7 @@ def build_application(settings: Settings) -> Application:
     app.add_handler(CommandHandler("watch", handlers.watch_cmd))
     app.add_handler(CommandHandler("brief", handlers.brief_cmd))
     app.add_handler(CommandHandler("alert", handlers.alert_cmd))
+    app.add_handler(CommandHandler(["lang", "language"], handlers.lang_cmd))
     app.add_handler(CommandHandler("clear", handlers.clear_cmd))
     app.add_handler(CallbackQueryHandler(handlers.handle_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.handle_text))

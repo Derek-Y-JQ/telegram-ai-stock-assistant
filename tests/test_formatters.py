@@ -46,7 +46,10 @@ def test_format_stock_quote() -> None:
         turnover_rate=0.16,
         total_mv=19160.5,
     )
-    rendered = format_stock_quote(quote)
-    assert "贵州茅台" in rendered
-    assert "600519.SH" in rendered
-    assert "🔴 +1.70%" in rendered
+    rendered_en = format_stock_quote(quote)
+    assert "贵州茅台" in rendered_en
+    assert "600519.SH" in rendered_en
+    assert "🟢 +1.70%" in rendered_en
+
+    rendered_zh = format_stock_quote(quote, lang="zh")
+    assert "🔴 +1.70%" in rendered_zh

@@ -36,6 +36,9 @@ def test_normalize_stock_code(raw: str, expected: tuple[str, str, str]) -> None:
         ("AAPL", "US", "AAPL", "AAPL"),
         ("nvda", "US", "NVDA", "NVDA"),
         ("BRK.B", "US", "BRK-B", "BRK-B"),
+        ("D05.SI", "SG", "D05.SI", "D05.SI"),
+        ("o39.si", "SG", "O39.SI", "O39.SI"),
+        ("DBS", "SG", "D05.SI", "D05.SI"),
     ],
 )
 def test_parse_stock_symbol(raw: str, market_type: str, code: str, yf_symbol: str) -> None:

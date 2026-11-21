@@ -1,352 +1,768 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>全球股市交互式看板</title>
+  <title>Market Terminal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="https://unpkg.com/lightweight-charts@4.2.1/dist/lightweight-charts.standalone.production.js"></script>
   <style>
     :root {
-      --bg: #0f1419;
-      --card: #19212a;
-      --border: #263241;
-      --text: #e6edf3;
-      --muted: #8b949e;
-      --up: #ef5350;
-      --down: #26a69a;
-      --accent: #3b82f6;
+      --bg: #09090b;
+      --surface: #111113;
+      --surface-hover: #18181b;
+      --hairline: rgba(255, 255, 255, 0.08);
+      --hairline-strong: rgba(255, 255, 255, 0.14);
+      --ink: #fafafa;
+      --ink-2: #a1a1aa;
+      --ink-3: #71717a;
+      --pos: #22c55e;
+      --pos-soft: rgba(34, 197, 94, 0.12);
+      --neg: #ef4444;
+      --neg-soft: rgba(239, 68, 68, 0.12);
+      --ma5: #f59e0b;
+      --ma10: #38bdf8;
+      --ma20: #a1a1aa;
+      --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+      --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
+    body.zh-colors {
+      --pos: #ef4444;
+      --pos-soft: rgba(239, 68, 68, 0.12);
+      --neg: #22c55e;
+      --neg-soft: rgba(34, 197, 94, 0.12);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body {
       background: var(--bg);
-      color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif;
-      padding: 12px 12px 72px;
+      color: var(--ink);
+      font-family: var(--font-sans);
       -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
     }
-    .search-bar {
+    body { padding-bottom: 68px; }
+
+    /* Top Header & Search */
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      background: rgba(9, 9, 11, 0.88);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--hairline);
+      padding: 10px 14px;
+    }
+    .topbar-row {
       display: flex;
+      align-items: center;
       gap: 8px;
-      margin-bottom: 12px;
     }
-    .search-bar input {
+    .search-wrap {
       flex: 1;
-      background: var(--card);
-      border: 1px solid var(--border);
-      color: var(--text);
-      border-radius: 10px;
-      padding: 10px 12px;
-      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      border-radius: 8px;
+      padding: 0 10px;
+      height: 36px;
+      transition: border-color 0.15s ease;
+    }
+    .search-wrap:focus-within { border-color: var(--hairline-strong); }
+    .search-wrap svg { color: var(--ink-3); flex-shrink: 0; }
+    .search-wrap input {
+      width: 100%;
+      background: transparent;
+      border: none;
+      color: var(--ink);
+      font-family: var(--font-sans);
+      font-size: 13px;
       outline: none;
     }
-    .search-bar button {
-      background: var(--accent);
-      color: #fff;
+    .search-wrap input::placeholder { color: var(--ink-3); }
+    .go-btn {
+      background: var(--ink);
+      color: var(--bg);
       border: none;
-      border-radius: 10px;
-      padding: 0 16px;
-      font-size: 14px;
+      border-radius: 8px;
+      height: 36px;
+      padding: 0 13px;
+      font-size: 12px;
       font-weight: 600;
+      letter-spacing: 0.01em;
       cursor: pointer;
+      transition: opacity 0.15s ease;
     }
-    .card {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 14px;
-      margin-bottom: 12px;
+    .go-btn:active { opacity: 0.8; }
+
+    .lang-switch {
+      display: flex;
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      border-radius: 8px;
+      padding: 2px;
+      height: 36px;
+      align-items: center;
     }
-    .quote-head {
+    .lang-switch button {
+      background: transparent;
+      border: none;
+      color: var(--ink-3);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 0 8px;
+      height: 30px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .lang-switch button.active {
+      background: #27272a;
+      color: var(--ink);
+    }
+
+    .quick-strip {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .quick-strip::-webkit-scrollbar { display: none; }
+    .chip {
+      background: transparent;
+      border: 1px solid var(--hairline);
+      color: var(--ink-2);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      padding: 4px 9px;
+      border-radius: 6px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s ease;
+    }
+    .chip:hover, .chip.active {
+      background: var(--surface-hover);
+      border-color: var(--hairline-strong);
+      color: var(--ink);
+    }
+
+    /* Quote Hero (Flat Editorial Style) */
+    .quote-hero {
+      padding: 16px 16px 14px;
+      border-bottom: 1px solid var(--hairline);
+    }
+    .quote-top {
       display: flex;
       justify-content: space-between;
-      align-items: baseline;
+      align-items: flex-start;
       gap: 8px;
     }
-    .stock-title { font-size: 18px; font-weight: 700; }
-    .badge {
-      font-size: 11px;
-      padding: 2px 6px;
-      border-radius: 6px;
-      background: #263241;
-      color: #93c5fd;
-      margin-left: 6px;
+    .ticker-name {
+      font-size: 17px;
+      font-weight: 600;
+      letter-spacing: -0.015em;
+      line-height: 1.25;
     }
-    .price-row {
+    .ticker-sub {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 3px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--ink-3);
+    }
+    .mkt-tag {
+      border: 1px solid var(--hairline-strong);
+      color: var(--ink-2);
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-size: 10px;
+      letter-spacing: 0.04em;
+    }
+    .price-line {
       display: flex;
       align-items: baseline;
       gap: 10px;
-      margin-top: 6px;
+      margin-top: 12px;
     }
-    .price-main { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
-    .up { color: var(--up); }
-    .down { color: var(--down); }
-    .meta-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 8px;
-      margin-top: 10px;
-      font-size: 12px;
-      color: var(--muted);
-    }
-    .meta-grid strong { display: block; color: var(--text); font-size: 13px; margin-top: 2px; }
-    .period-tabs {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 10px;
-    }
-    .period-btn {
-      flex: 1;
-      background: var(--bg);
-      color: var(--muted);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 7px 0;
-      font-size: 13px;
+    .price-val {
+      font-family: var(--font-mono);
+      font-size: 32px;
       font-weight: 600;
-      cursor: pointer;
+      letter-spacing: -0.03em;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
     }
-    .period-btn.active {
-      background: var(--accent);
-      border-color: var(--accent);
-      color: #fff;
+    .price-ccy {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--ink-3);
+      margin-left: 2px;
     }
-    #chart-container { width: 100%; height: 340px; border-radius: 10px; overflow: hidden; }
-    .legend {
-      display: flex;
-      gap: 12px;
-      font-size: 11px;
-      color: var(--muted);
-      margin-bottom: 6px;
+    .delta-pill {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 500;
+      padding: 3px 8px;
+      border-radius: 5px;
+      font-variant-numeric: tabular-nums;
     }
-    .list-item {
+    .delta-pill.pos { color: var(--pos); background: var(--pos-soft); }
+    .delta-pill.neg { color: var(--neg); background: var(--neg-soft); }
+    .pos-text { color: var(--pos); }
+    .neg-text { color: var(--neg); }
+
+    /* Chart Controls & Live OHLCV Bar */
+    .chart-toolbar {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 12px 4px;
-      border-bottom: 1px solid var(--border);
-      cursor: pointer;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--hairline);
     }
-    .list-item:last-child { border-bottom: none; }
-    .sub-text { font-size: 12px; color: var(--muted); margin-top: 2px; }
-    .tabbar {
+    .seg-group {
+      display: flex;
+      gap: 2px;
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      border-radius: 7px;
+      padding: 2px;
+    }
+    .seg-btn {
+      background: transparent;
+      border: none;
+      color: var(--ink-3);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 500;
+      padding: 4px 10px;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .seg-btn.active {
+      background: #27272a;
+      color: var(--ink);
+    }
+    .ma-toggles {
+      display: flex;
+      gap: 8px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+    .ma-btn {
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      color: var(--ink-2);
+      opacity: 1;
+      transition: opacity 0.15s ease;
+    }
+    .ma-btn.off { opacity: 0.32; }
+    .ma-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+
+    .ohlc-strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      padding: 8px 16px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--ink-3);
+      font-variant-numeric: tabular-nums;
+      border-bottom: 1px solid var(--hairline);
+      min-height: 31px;
+    }
+    .ohlc-strip span b { color: var(--ink-2); font-weight: 500; margin-left: 3px; }
+
+    #chart-canvas {
+      width: 100%;
+      height: 340px;
+      background: var(--bg);
+    }
+
+    /* Key Stats Hairline Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      border-top: 1px solid var(--hairline);
+      border-bottom: 1px solid var(--hairline);
+    }
+    .stat-cell {
+      padding: 12px 14px;
+      border-right: 1px solid var(--hairline);
+      border-bottom: 1px solid var(--hairline);
+    }
+    .stat-cell:nth-child(3n) { border-right: none; }
+    .stat-cell:nth-last-child(-n+3) { border-bottom: none; }
+    .stat-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--ink-3);
+    }
+    .stat-val {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--ink);
+      margin-top: 4px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Markets & Watchlist Lists */
+    .section-head {
+      padding: 14px 16px 8px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--ink-3);
+      border-bottom: 1px solid var(--hairline);
+      background: var(--surface);
+    }
+    .row-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 13px 16px;
+      border-bottom: 1px solid var(--hairline);
+      cursor: pointer;
+      transition: background 0.12s ease;
+    }
+    .row-item:active { background: var(--surface-hover); }
+    .row-title { font-size: 14px; font-weight: 500; color: var(--ink); }
+    .row-sub {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--ink-3);
+      margin-top: 2px;
+    }
+    .row-right { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+    .row-price { font-size: 14px; font-weight: 600; }
+    .row-pct { font-size: 11px; margin-top: 2px; }
+
+    /* Bottom Navigation */
+    .bottom-nav {
       position: fixed;
       bottom: 0;
       left: 0;
       right: 0;
+      height: 58px;
+      background: rgba(9, 9, 11, 0.94);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border-top: 1px solid var(--hairline);
       display: flex;
-      background: #141b23;
-      border-top: 1px solid var(--border);
-      padding: 8px 12px;
-      gap: 8px;
+      z-index: 30;
     }
-    .tabbar button {
+    .nav-btn {
       flex: 1;
       background: transparent;
       border: none;
-      color: var(--muted);
-      font-size: 13px;
-      font-weight: 600;
-      padding: 8px 0;
-      border-radius: 8px;
+      color: var(--ink-3);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.02em;
       cursor: pointer;
+      position: relative;
+      transition: color 0.15s ease;
     }
-    .tabbar button.active { background: var(--card); color: #fff; }
-    .hidden { display: none; }
-    .status { text-align: center; color: var(--muted); padding: 24px 0; font-size: 14px; }
+    .nav-btn.active { color: var(--ink); }
+    .nav-btn.active::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 28%;
+      right: 28%;
+      height: 2px;
+      background: var(--ink);
+      border-radius: 0 0 2px 2px;
+    }
+
+    /* Skeleton & Empty States */
+    .skeleton {
+      background: linear-gradient(90deg, #141417 25%, #1d1d22 50%, #141417 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.4s infinite;
+      border-radius: 4px;
+    }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    .empty-state {
+      padding: 48px 20px;
+      text-align: center;
+      color: var(--ink-3);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .hidden { display: none !important; }
   </style>
 </head>
 <body>
-  <div class="search-bar">
-    <input id="symbol-input" type="text" placeholder="输入代码或名称：600519 / 00700 / NVDA / 茅台" />
-    <button id="search-btn">查看</button>
-  </div>
-
-  <!-- Tab 1: Chart -->
-  <section id="tab-chart">
-    <div class="card" id="quote-card">
-      <div class="status">正在加载行情数据...</div>
-    </div>
-    <div class="card">
-      <div class="period-tabs">
-        <button class="period-btn active" data-period="daily">日K</button>
-        <button class="period-btn" data-period="weekly">周K</button>
-        <button class="period-btn" data-period="monthly">月K</button>
+  <header class="topbar">
+    <div class="topbar-row">
+      <div class="search-wrap">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input id="symbol-input" type="text" autocomplete="off" spellcheck="false" />
       </div>
-      <div class="legend">
-        <span style="color:#ff9800">● MA5</span>
-        <span style="color:#2196f3">● MA10</span>
-        <span style="color:#ab47bc">● MA20</span>
+      <button id="search-btn" class="go-btn">Go</button>
+      <div class="lang-switch" role="group" aria-label="Language">
+        <button id="lang-en" data-lang="en">EN</button>
+        <button id="lang-zh" data-lang="zh">中</button>
       </div>
-      <div id="chart-container"></div>
     </div>
-  </section>
-
-  <!-- Tab 2: Global Market -->
-  <section id="tab-market" class="hidden">
-    <div class="card" id="market-list">
-      <div class="status">正在加载全球大盘指数...</div>
+    <div class="quick-strip" id="quick-strip">
+      <button class="chip" data-sym="NVDA">NVDA</button>
+      <button class="chip" data-sym="AAPL">AAPL</button>
+      <button class="chip" data-sym="D05.SI">D05.SI</button>
+      <button class="chip" data-sym="00700">00700.HK</button>
+      <button class="chip" data-sym="600519">600519</button>
     </div>
-  </section>
+  </header>
 
-  <!-- Tab 3: Watchlist -->
-  <section id="tab-watch" class="hidden">
-    <div class="card" id="watch-list">
-      <div class="status">正在加载自选股...</div>
+  <!-- View 1: Interactive Chart -->
+  <main id="view-chart">
+    <section class="quote-hero" id="quote-hero">
+      <div class="skeleton" style="height:20px;width:45%"></div>
+      <div class="skeleton" style="height:34px;width:60%;margin-top:12px"></div>
+    </section>
+
+    <div class="chart-toolbar">
+      <div class="seg-group">
+        <button class="seg-btn active" data-period="daily">1D</button>
+        <button class="seg-btn" data-period="weekly">1W</button>
+        <button class="seg-btn" data-period="monthly">1M</button>
+      </div>
+      <div class="ma-toggles">
+        <button class="ma-btn" data-ma="ma5"><span class="ma-dot" style="background:var(--ma5)"></span>MA5</button>
+        <button class="ma-btn" data-ma="ma10"><span class="ma-dot" style="background:var(--ma10)"></span>MA10</button>
+        <button class="ma-btn" data-ma="ma20"><span class="ma-dot" style="background:var(--ma20)"></span>MA20</button>
+      </div>
     </div>
-  </section>
 
-  <nav class="tabbar">
-    <button class="active" data-tab="chart">📊 K线图表</button>
-    <button data-tab="market">🌍 全球大盘</button>
-    <button data-tab="watch">⭐ 我的自选</button>
+    <div class="ohlc-strip" id="ohlc-strip">
+      <span>O<b>—</b></span><span>H<b>—</b></span><span>L<b>—</b></span><span>C<b>—</b></span>
+    </div>
+
+    <div id="chart-canvas"></div>
+
+    <section class="stats-grid" id="stats-grid"></section>
+  </main>
+
+  <!-- View 2: Global Markets -->
+  <main id="view-markets" class="hidden">
+    <div id="markets-body"></div>
+  </main>
+
+  <!-- View 3: Watchlist -->
+  <main id="view-watch" class="hidden">
+    <div id="watch-body"></div>
+  </main>
+
+  <nav class="bottom-nav">
+    <button class="nav-btn active" data-tab="chart">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+      <span data-i18n="nav_chart">Chart</span>
+    </button>
+    <button class="nav-btn" data-tab="markets">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+      <span data-i18n="nav_markets">Markets</span>
+    </button>
+    <button class="nav-btn" data-tab="watch">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+      <span data-i18n="nav_watch">Watchlist</span>
+    </button>
   </nav>
 
   <script>
     const tg = window.Telegram && window.Telegram.WebApp;
     if (tg) { tg.ready(); tg.expand(); }
 
+    const I18N = {
+      en: {
+        placeholder: "Ticker or name: NVDA, D05.SI, 00700, 600519",
+        go: "Go",
+        nav_chart: "Chart",
+        nav_markets: "Markets",
+        nav_watch: "Watchlist",
+        open: "Open", high: "High", low: "Low",
+        prev: "Prev Close", mktcap: "Mkt Cap", pe: "P/E (TTM)",
+        loading: "Loading market data...",
+        not_found: "Symbol not found or data source unavailable.",
+        no_user: "Open from the Telegram bot to sync your watchlist.",
+        empty_watch: "Your watchlist is empty. Tap Watchlist on any stock card in Telegram.",
+        view_chart: "Chart",
+        groups: { US: "US Markets", SG: "Singapore (SGX)", HK: "Hong Kong", CN: "China A-Shares" },
+      },
+      zh: {
+        placeholder: "输入代码或名称：NVDA / D05.SI / 00700 / 600519",
+        go: "查看",
+        nav_chart: "图表",
+        nav_markets: "全球大盘",
+        nav_watch: "自选股",
+        open: "今开", high: "最高", low: "最低",
+        prev: "昨收", mktcap: "总市值", pe: "市盈率",
+        loading: "正在加载行情数据...",
+        not_found: "未找到该标的或数据源暂不可用。",
+        no_user: "请从 Telegram 机器人内打开以同步你的自选股。",
+        empty_watch: "自选列表为空，先在机器人卡片里点击「加自选」吧。",
+        view_chart: "看图",
+        groups: { US: "美股", SG: "新加坡 (SGX)", HK: "港股", CN: "中国 A 股" },
+      },
+    };
+
     const params = new URLSearchParams(window.location.search);
-    let currentSymbol = params.get("symbol") || "600519";
+    let lang = params.get("lang") === "zh" ? "zh" : "en";
+    let currentSymbol = params.get("symbol") || "NVDA";
     let currentPeriod = "daily";
     const userId = params.get("user_id") || (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id) || "";
-
-    document.getElementById("symbol-input").value = currentSymbol;
+    const maVisible = { ma5: true, ma10: true, ma20: true };
 
     let chart = null;
-    function initChart() {
-      const container = document.getElementById("chart-container");
+    let maSeriesMap = {};
+    let lastKlineData = null;
+
+    function t(key) { return I18N[lang][key] || key; }
+
+    function applyLanguage() {
+      document.documentElement.lang = lang;
+      document.body.classList.toggle("zh-colors", lang === "zh");
+      document.getElementById("lang-en").classList.toggle("active", lang === "en");
+      document.getElementById("lang-zh").classList.toggle("active", lang === "zh");
+      document.getElementById("symbol-input").placeholder = t("placeholder");
+      document.getElementById("search-btn").textContent = t("go");
+      document.querySelectorAll("[data-i18n]").forEach(el => {
+        el.textContent = t(el.dataset.i18n);
+      });
+    }
+
+    function colorUp() { return lang === "zh" ? "#ef4444" : "#22c55e"; }
+    function colorDown() { return lang === "zh" ? "#22c55e" : "#ef4444"; }
+
+    function updateOhlcStrip(bar) {
+      if (!bar) return;
+      document.getElementById("ohlc-strip").innerHTML =
+        `<span>O<b>${bar.open.toFixed(2)}</b></span>` +
+        `<span>H<b>${bar.high.toFixed(2)}</b></span>` +
+        `<span>L<b>${bar.low.toFixed(2)}</b></span>` +
+        `<span>C<b>${bar.close.toFixed(2)}</b></span>` +
+        `<span style="margin-left:auto">${bar.time}</span>`;
+    }
+
+    function renderChart(k) {
+      const container = document.getElementById("chart-canvas");
       container.innerHTML = "";
       chart = LightweightCharts.createChart(container, {
-        layout: { background: { color: "#19212a" }, textColor: "#9ca3af" },
-        grid: { vertLines: { color: "#232e3b" }, horzLines: { color: "#232e3b" } },
-        crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
-        rightPriceScale: { borderColor: "#263241" },
-        timeScale: { borderColor: "#263241", timeVisible: true },
+        layout: {
+          background: { color: "#09090b" },
+          textColor: "#71717a",
+          fontFamily: "'JetBrains Mono', monospace",
+          fontSize: 11,
+        },
+        grid: {
+          vertLines: { color: "rgba(255,255,255,0.04)" },
+          horzLines: { color: "rgba(255,255,255,0.04)" },
+        },
+        crosshair: {
+          mode: LightweightCharts.CrosshairMode.Normal,
+          vertLine: { color: "rgba(255,255,255,0.22)", labelBackgroundColor: "#27272a" },
+          horzLine: { color: "rgba(255,255,255,0.22)", labelBackgroundColor: "#27272a" },
+        },
+        rightPriceScale: { borderColor: "rgba(255,255,255,0.08)" },
+        timeScale: { borderColor: "rgba(255,255,255,0.08)", timeVisible: true },
         width: container.clientWidth,
         height: 340,
       });
-      window.addEventListener("resize", () => {
-        if (chart) chart.applyOptions({ width: container.clientWidth });
+
+      const up = colorUp();
+      const down = colorDown();
+      const candleSeries = chart.addCandlestickSeries({
+        upColor: up, downColor: down,
+        borderUpColor: up, borderDownColor: down,
+        wickUpColor: up, wickDownColor: down,
       });
+      candleSeries.setData(k.candles);
+
+      const volSeries = chart.addHistogramSeries({
+        priceFormat: { type: "volume" },
+        priceScaleId: "",
+      });
+      volSeries.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
+      const recoloredVols = k.candles.map((c, idx) => ({
+        time: c.time,
+        value: k.volumes[idx] ? k.volumes[idx].value : 0,
+        color: c.close >= c.open ? (up + "44") : (down + "44"),
+      }));
+      volSeries.setData(recoloredVols);
+
+      maSeriesMap = {};
+      const maDefs = [
+        ["ma5", "#f59e0b"],
+        ["ma10", "#38bdf8"],
+        ["ma20", "#a1a1aa"],
+      ];
+      for (const [key, color] of maDefs) {
+        if (k[key] && k[key].length) {
+          const s = chart.addLineSeries({
+            color,
+            lineWidth: 1.2,
+            priceLineVisible: false,
+            lastValueVisible: false,
+            visible: maVisible[key],
+          });
+          s.setData(k[key]);
+          maSeriesMap[key] = s;
+        }
+      }
+
+      if (k.candles.length) updateOhlcStrip(k.candles[k.candles.length - 1]);
+      chart.subscribeCrosshairMove(param => {
+        if (!param || !param.seriesData) return;
+        const bar = param.seriesData.get(candleSeries);
+        if (bar) updateOhlcStrip(bar);
+      });
+
+      chart.timeScale().fitContent();
     }
 
     async function loadStock(symbol, period) {
       currentSymbol = symbol;
       currentPeriod = period;
       document.getElementById("symbol-input").value = symbol;
-      document.getElementById("quote-card").innerHTML = `<div class="status">⏳ 正在加载 ${symbol} 行情...</div>`;
+      document.querySelectorAll(".chip").forEach(c => {
+        c.classList.toggle("active", c.dataset.sym.toUpperCase() === symbol.toUpperCase());
+      });
+
+      document.getElementById("quote-hero").innerHTML =
+        `<div class="skeleton" style="height:20px;width:45%"></div>` +
+        `<div class="skeleton" style="height:34px;width:62%;margin-top:12px"></div>`;
 
       try {
         const [qRes, kRes] = await Promise.all([
           fetch(`/api/quote?symbol=${encodeURIComponent(symbol)}`),
           fetch(`/api/kline?symbol=${encodeURIComponent(symbol)}&period=${period}`),
         ]);
-        if (!qRes.ok || !kRes.ok) throw new Error("标的未找到或数据源暂不可用");
+        if (!qRes.ok || !kRes.ok) throw new Error(t("not_found"));
         const q = await qRes.json();
         const k = await kRes.json();
+        lastKlineData = k;
 
-        const cls = q.change_pct >= 0 ? "up" : "down";
+        const isPos = q.change_pct >= 0;
         const sign = q.change_pct > 0 ? "+" : "";
-        document.getElementById("quote-card").innerHTML = `
-          <div class="quote-head">
-            <div><span class="stock-title">${q.name}</span><span class="badge">${q.market_type} · ${q.ts_code}</span></div>
-            <span class="sub-text">${q.trade_date}</span>
+        const amtStr = q.change_amount != null ? ` (${sign}${q.change_amount.toFixed(2)})` : "";
+
+        document.getElementById("quote-hero").innerHTML = `
+          <div class="quote-top">
+            <div>
+              <div class="ticker-name">${q.name}</div>
+              <div class="ticker-sub">
+                <span class="mkt-tag">${q.market_type}</span>
+                <span>${q.ts_code}</span>
+                ${q.industry ? `<span>· ${q.industry}</span>` : ""}
+              </div>
+            </div>
+            <div class="ticker-sub">${q.trade_date}</div>
           </div>
-          <div class="price-row">
-            <span class="price-main ${cls}">${q.close.toFixed(2)}</span>
-            <span class="${cls}" style="font-weight:600">${sign}${q.change_pct.toFixed(2)}% ${q.currency}</span>
-          </div>
-          <div class="meta-grid">
-            <div>开盘<strong>${q.open.toFixed(2)}</strong></div>
-            <div>最高<strong>${q.high.toFixed(2)}</strong></div>
-            <div>最低<strong>${q.low.toFixed(2)}</strong></div>
+          <div class="price-line">
+            <span class="price-val">${q.close.toFixed(2)}<span class="price-ccy">${q.currency}</span></span>
+            <span class="delta-pill ${isPos ? "pos" : "neg"}">${sign}${q.change_pct.toFixed(2)}%${amtStr}</span>
           </div>
         `;
 
-        initChart();
-        const candleSeries = chart.addCandlestickSeries({
-          upColor: "#ef5350", downColor: "#26a69a",
-          borderUpColor: "#ef5350", borderDownColor: "#26a69a",
-          wickUpColor: "#ef5350", wickDownColor: "#26a69a",
-        });
-        candleSeries.setData(k.candles);
+        const mvStr = q.total_mv != null
+          ? (lang === "zh" ? `${q.total_mv.toFixed(1)} 亿` : `${(q.total_mv / 10).toFixed(1)}B`)
+          : "—";
 
-        const volSeries = chart.addHistogramSeries({
-          priceFormat: { type: "volume" },
-          priceScaleId: "",
-        });
-        volSeries.priceScale().applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
-        volSeries.setData(k.volumes);
+        document.getElementById("stats-grid").innerHTML = `
+          <div class="stat-cell"><div class="stat-label">${t("open")}</div><div class="stat-val">${q.open.toFixed(2)}</div></div>
+          <div class="stat-cell"><div class="stat-label">${t("high")}</div><div class="stat-val">${q.high.toFixed(2)}</div></div>
+          <div class="stat-cell"><div class="stat-label">${t("low")}</div><div class="stat-val">${q.low.toFixed(2)}</div></div>
+          <div class="stat-cell"><div class="stat-label">${t("prev")}</div><div class="stat-val">${q.pre_close != null ? q.pre_close.toFixed(2) : "—"}</div></div>
+          <div class="stat-cell"><div class="stat-label">${t("mktcap")}</div><div class="stat-val">${mvStr}</div></div>
+          <div class="stat-cell"><div class="stat-label">${t("pe")}</div><div class="stat-val">${q.pe_ttm != null ? q.pe_ttm.toFixed(2) : "—"}</div></div>
+        `;
 
-        if (k.ma5.length) {
-          const s = chart.addLineSeries({ color: "#ff9800", lineWidth: 1.2, priceLineVisible: false });
-          s.setData(k.ma5);
-        }
-        if (k.ma10.length) {
-          const s = chart.addLineSeries({ color: "#2196f3", lineWidth: 1.2, priceLineVisible: false });
-          s.setData(k.ma10);
-        }
-        if (k.ma20.length) {
-          const s = chart.addLineSeries({ color: "#ab47bc", lineWidth: 1.2, priceLineVisible: false });
-          s.setData(k.ma20);
-        }
-        chart.timeScale().fitContent();
+        renderChart(k);
       } catch (err) {
-        document.getElementById("quote-card").innerHTML = `<div class="status">⚠️ ${err.message}</div>`;
+        document.getElementById("quote-hero").innerHTML = `<div class="empty-state">${err.message}</div>`;
+        document.getElementById("stats-grid").innerHTML = "";
       }
     }
 
-    async function loadMarket() {
-      const box = document.getElementById("market-list");
-      box.innerHTML = `<div class="status">⏳ 正在加载全球大盘...</div>`;
+    async function loadMarkets() {
+      const box = document.getElementById("markets-body");
+      box.innerHTML = `<div class="empty-state">${t("loading")}</div>`;
       try {
         const res = await fetch("/api/market");
         const data = await res.json();
-        if (!data.indices.length) {
-          box.innerHTML = `<div class="status">暂无指数数据</div>`;
-          return;
+        const groups = ["US", "SG", "HK", "CN"];
+        let html = "";
+        for (const g of groups) {
+          const list = data.indices.filter(i => i.market_type === g);
+          if (!list.length) continue;
+          html += `<div class="section-head">${I18N[lang].groups[g]}</div>`;
+          for (const idx of list) {
+            const cls = idx.change_pct >= 0 ? "pos-text" : "neg-text";
+            const sign = idx.change_pct > 0 ? "+" : "";
+            html += `
+              <div class="row-item">
+                <div>
+                  <div class="row-title">${idx.name}</div>
+                  <div class="row-sub">${idx.code}</div>
+                </div>
+                <div class="row-right">
+                  <div class="row-price">${idx.close.toFixed(2)}</div>
+                  <div class="row-pct ${cls}">${sign}${idx.change_pct.toFixed(2)}%</div>
+                </div>
+              </div>`;
+          }
         }
-        box.innerHTML = data.indices.map(idx => {
-          const cls = idx.change_pct >= 0 ? "up" : "down";
-          const sign = idx.change_pct > 0 ? "+" : "";
-          return `
-            <div class="list-item">
-              <div><strong>${idx.name}</strong><div class="sub-text">${idx.market_type} · ${idx.code}</div></div>
-              <div style="text-align:right">
-                <strong class="${cls}">${idx.close.toFixed(2)}</strong>
-                <div class="sub-text ${cls}">${sign}${idx.change_pct.toFixed(2)}%</div>
-              </div>
-            </div>
-          `;
-        }).join("");
+        box.innerHTML = html || `<div class="empty-state">${t("not_found")}</div>`;
       } catch (err) {
-        box.innerHTML = `<div class="status">⚠️ 加载失败</div>`;
+        box.innerHTML = `<div class="empty-state">${t("not_found")}</div>`;
       }
     }
 
     async function loadWatchlist() {
-      const box = document.getElementById("watch-list");
+      const box = document.getElementById("watch-body");
       if (!userId) {
-        box.innerHTML = `<div class="status">请从 Telegram 机器人内打开以同步你的自选股</div>`;
+        box.innerHTML = `<div class="empty-state">${t("no_user")}</div>`;
         return;
       }
-      box.innerHTML = `<div class="status">⏳ 正在加载自选股...</div>`;
+      box.innerHTML = `<div class="empty-state">${t("loading")}</div>`;
       try {
         const res = await fetch(`/api/watchlist?user_id=${encodeURIComponent(userId)}`);
         const data = await res.json();
         if (!data.items.length) {
-          box.innerHTML = `<div class="status">自选列表为空，先在机器人里添加自选股吧 ⭐</div>`;
+          box.innerHTML = `<div class="empty-state">${t("empty_watch")}</div>`;
           return;
         }
         box.innerHTML = data.items.map(it => `
-          <div class="list-item" onclick="openFromWatch('${it.code}')">
-            <div><strong>${it.name}</strong><div class="sub-text">${it.market_type} · ${it.code}</div></div>
-            <span style="color:#93c5fd;font-size:13px">查看 K 线 →</span>
+          <div class="row-item" onclick="openFromWatch('${it.code}')">
+            <div>
+              <div class="row-title">${it.name}</div>
+              <div class="row-sub">${it.market_type} · ${it.code}</div>
+            </div>
+            <div class="row-right" style="color:var(--ink-2);font-size:12px">${t("view_chart")} →</div>
           </div>
         `).join("");
       } catch (err) {
-        box.innerHTML = `<div class="status">⚠️ 加载失败</div>`;
+        box.innerHTML = `<div class="empty-state">${t("not_found")}</div>`;
       }
     }
 
@@ -356,24 +772,37 @@
     }
 
     function switchTab(tab) {
-      ["chart", "market", "watch"].forEach(t => {
-        document.getElementById(`tab-${t}`).classList.toggle("hidden", t !== tab);
+      ["chart", "markets", "watch"].forEach(v => {
+        document.getElementById(`view-${v}`).classList.toggle("hidden", v !== tab);
       });
-      document.querySelectorAll(".tabbar button").forEach(btn => {
-        btn.classList.toggle("active", btn.dataset.tab === tab);
+      document.querySelectorAll(".nav-btn").forEach(b => {
+        b.classList.toggle("active", b.dataset.tab === tab);
       });
-      if (tab === "market") loadMarket();
+      if (tab === "markets") loadMarkets();
       if (tab === "watch") loadWatchlist();
     }
 
-    document.querySelectorAll(".tabbar button").forEach(btn => {
-      btn.addEventListener("click", () => switchTab(btn.dataset.tab));
+    // Events
+    document.querySelectorAll(".nav-btn").forEach(b => b.addEventListener("click", () => switchTab(b.dataset.tab)));
+    document.querySelectorAll(".seg-btn").forEach(b => {
+      b.addEventListener("click", () => {
+        document.querySelectorAll(".seg-btn").forEach(x => x.classList.remove("active"));
+        b.classList.add("active");
+        loadStock(currentSymbol, b.dataset.period);
+      });
     });
-    document.querySelectorAll(".period-btn").forEach(btn => {
-      btn.addEventListener("click", () => {
-        document.querySelectorAll(".period-btn").forEach(b => b.classList.remove("active"));
-        btn.classList.add("active");
-        loadStock(currentSymbol, btn.dataset.period);
+    document.querySelectorAll(".ma-btn").forEach(b => {
+      b.addEventListener("click", () => {
+        const k = b.dataset.ma;
+        maVisible[k] = !maVisible[k];
+        b.classList.toggle("off", !maVisible[k]);
+        if (maSeriesMap[k]) maSeriesMap[k].applyOptions({ visible: maVisible[k] });
+      });
+    });
+    document.querySelectorAll(".chip").forEach(c => {
+      c.addEventListener("click", () => {
+        switchTab("chart");
+        loadStock(c.dataset.sym, currentPeriod);
       });
     });
     document.getElementById("search-btn").addEventListener("click", () => {
@@ -383,7 +812,18 @@
     document.getElementById("symbol-input").addEventListener("keydown", e => {
       if (e.key === "Enter") document.getElementById("search-btn").click();
     });
+    document.querySelectorAll(".lang-switch button").forEach(b => {
+      b.addEventListener("click", () => {
+        lang = b.dataset.lang;
+        applyLanguage();
+        loadStock(currentSymbol, currentPeriod);
+      });
+    });
+    window.addEventListener("resize", () => {
+      if (chart) chart.applyOptions({ width: document.getElementById("chart-canvas").clientWidth });
+    });
 
+    applyLanguage();
     loadStock(currentSymbol, currentPeriod);
   </script>
 </body>

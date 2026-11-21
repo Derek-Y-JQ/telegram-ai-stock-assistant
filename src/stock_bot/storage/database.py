@@ -1,4 +1,4 @@
-"""Async SQLite storage for watchlists, chat history, briefing subscriptions, and price alerts."""
+"""Async SQLite storage for watchlists, chat history, language preferences, briefings, and alerts."""
 
 from __future__ import annotations
 
@@ -8,7 +8,8 @@ from typing import Literal
 
 import aiosqlite
 
-from stock_bot.models import BriefSubscription, MarketType, PriceAlert, WatchlistItem
+from stock_bot.i18n import DEFAULT_LANG
+from stock_bot.models import BriefSubscription, Lang, MarketType, PriceAlert, WatchlistItem
 
 
 class Database:
@@ -32,7 +33,6 @@ class Database:
                 )
                 """
             )
-            # Safe migration for v2.0 databases without market_type column
             cursor = await db.execute("PRAGMA table_info(watchlist)")
             columns = {row[1] for row in await cursor.fetchall()}
             if "market_type" not in columns:
@@ -53,6 +53,16 @@ class Database:
             )
             await db.execute(
                 "CREATE INDEX IF NOT EXISTS idx_chat_history_chat_id ON chat_history (chat_id, id)"
+            )
+
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_preferences (
+                    user_id INTEGER PRIMARY KEY,
+                    lang TEXT NOT NULL DEFAULT 'en',
+                    updated_at TEXT NOT NULL
+                )
+                """
             )
 
             await db.execute(
@@ -89,6 +99,37 @@ class Database:
             await db.commit()
 
     # ------------------------------------------------------------------
+    # User Language Preference (default: English)
+    # ------------------------------------------------------------------
+
+    async def get_user_lang(self, user_id: int) -> Lang:
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                "SELECT lang FROM user_preferences WHERE user_id = ?",
+                (user_id,),
+            )
+            row = await cursor.fetchone()
+            if row and row[0] in ("en", "zh"):
+                return row[0]
+            return DEFAULT_LANG
+
+    async def set_user_lang(self, user_id: int, lang: Lang) -> Lang:
+        now = datetime.now(UTC).isoformat()
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """
+                INSERT INTO user_preferences (user_id, lang, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    lang = excluded.lang,
+                    updated_at = excluded.updated_at
+                """,
+                (user_id, lang, now),
+            )
+            await db.commit()
+        return lang
+
+    # ------------------------------------------------------------------
     # Watchlist
     # ------------------------------------------------------------------
 
@@ -99,7 +140,6 @@ class Database:
         name: str,
         market_type: MarketType = "CN",
     ) -> bool:
-        """Add stock to watchlist. Returns True if newly added, False if already existed."""
         now = datetime.now(UTC).isoformat()
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute(

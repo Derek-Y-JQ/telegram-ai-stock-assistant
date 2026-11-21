@@ -47,3 +47,8 @@ async def test_watchlist_history_briefings_and_alerts(tmp_path: Path) -> None:
 
     await db.mark_alert_triggered(alert.id)
     assert await db.get_active_alerts(1001) == []
+
+    # Language preference (default English, switchable to Chinese)
+    assert await db.get_user_lang(9999) == "en"
+    await db.set_user_lang(9999, "zh")
+    assert await db.get_user_lang(9999) == "zh"

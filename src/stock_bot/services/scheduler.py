@@ -1,4 +1,4 @@
-"""Scheduled morning/evening briefings and periodic price alert monitoring."""
+"""Scheduled morning/evening briefings and periodic price alert monitoring (bilingual EN/ZH)."""
 
 from __future__ import annotations
 
@@ -92,7 +92,13 @@ class BriefingScheduler:
             self.scheduler.shutdown(wait=False)
 
     async def build_briefing_text(self, kind: Literal["morning", "evening"], user_id: int) -> str:
-        title = "☀️ <b>每日盘前早报</b>" if kind == "morning" else "🌙 <b>每日盘后晚报</b>"
+        lang = await self.database.get_user_lang(user_id)
+        en = lang == "en"
+        if en:
+            title = "☀️ <b>Daily Morning Brief</b>" if kind == "morning" else "🌙 <b>Daily Evening Recap</b>"
+        else:
+            title = "☀️ <b>每日盘前早报</b>" if kind == "morning" else "🌙 <b>每日盘后晚报</b>"
+
         indices = await self.market_data.get_market_overview()
         watchlist = await self.database.get_watchlist(user_id)
 
@@ -101,7 +107,10 @@ class BriefingScheduler:
         for item in watchlist[:8]:
             try:
                 q = await self.market_data.get_quote(item.code)
-                icon = "🔴" if q.change_pct > 0 else ("🟢" if q.change_pct < 0 else "⚪")
+                if en:
+                    icon = "🟢" if q.change_pct > 0 else ("🔴" if q.change_pct < 0 else "⚪")
+                else:
+                    icon = "🔴" if q.change_pct > 0 else ("🟢" if q.change_pct < 0 else "⚪")
                 sign = "+" if q.change_pct > 0 else ""
                 watch_lines.append(
                     f"• <b>{esc(q.name)}</b> (<code>{esc(q.ts_code)}</code>)  <code>{q.close:.2f} {esc(q.currency)}</code>  {icon} {sign}{q.change_pct:.2f}%"
@@ -112,10 +121,10 @@ class BriefingScheduler:
             except Exception as exc:
                 logger.debug("Briefing watchlist quote failed for %s: %s", item.code, exc)
 
-        sections = [title, "", format_market_overview(indices, include_tip=False)]
+        sections = [title, "", format_market_overview(indices, lang=lang, include_tip=False)]
 
         if watch_lines:
-            sections.extend(["", "⭐ <b>自选股动态</b>", *watch_lines])
+            sections.extend(["", "⭐ <b>Watchlist Movers</b>" if en else "⭐ <b>自选股动态</b>", *watch_lines])
 
         try:
             ai_comment = await self.agent.summarize_briefing(
@@ -124,9 +133,12 @@ class BriefingScheduler:
                     "indices": [i.model_dump() for i in indices],
                     "watchlist": watch_quotes,
                 },
+                lang=lang,
             )
             if ai_comment:
-                sections.extend(["", "🤖 <b>AI 简评</b>", markdown_to_telegram_html(ai_comment)])
+                sections.extend(
+                    ["", "🤖 <b>AI Commentary</b>" if en else "🤖 <b>AI 简评</b>", markdown_to_telegram_html(ai_comment)]
+                )
         except Exception as exc:
             logger.warning("AI briefing summary failed: %s", exc)
 
@@ -155,7 +167,6 @@ class BriefingScheduler:
         if not alerts:
             return
 
-        # Deduplicate quote fetches by code
         quote_cache: dict[str, tuple[float, str]] = {}
         for alert in alerts:
             try:
@@ -169,13 +180,23 @@ class BriefingScheduler:
                 )
                 if hit:
                     await self.database.mark_alert_triggered(alert.id)
-                    cond = "突破（≥）" if alert.direction == "above" else "跌破（≤）"
-                    msg = (
-                        f"🔔 <b>价格预警触发！</b>\n\n"
-                        f"标的：<b>{esc(alert.name)}</b> (<code>{esc(alert.code)}</code>)\n"
-                        f"条件：{cond} <code>{alert.target_price:.2f} {esc(currency)}</code>\n"
-                        f"当前价：<b><code>{price:.2f} {esc(currency)}</code></b>"
-                    )
+                    lang = await self.database.get_user_lang(alert.user_id)
+                    if lang == "en":
+                        cond = "Reached / Above (≥)" if alert.direction == "above" else "Dropped / Below (≤)"
+                        msg = (
+                            f"🔔 <b>Price Alert Triggered!</b>\n\n"
+                            f"Ticker: <b>{esc(alert.name)}</b> (<code>{esc(alert.code)}</code>)\n"
+                            f"Condition: {cond} <code>{alert.target_price:.2f} {esc(currency)}</code>\n"
+                            f"Current Price: <b><code>{price:.2f} {esc(currency)}</code></b>"
+                        )
+                    else:
+                        cond = "突破（≥）" if alert.direction == "above" else "跌破（≤）"
+                        msg = (
+                            f"🔔 <b>价格预警触发！</b>\n\n"
+                            f"标的：<b>{esc(alert.name)}</b> (<code>{esc(alert.code)}</code>)\n"
+                            f"条件：{cond} <code>{alert.target_price:.2f} {esc(currency)}</code>\n"
+                            f"当前价：<b><code>{price:.2f} {esc(currency)}</code></b>"
+                        )
                     await self.bot.send_message(chat_id=alert.chat_id, text=msg, parse_mode=ParseMode.HTML)
             except Exception as exc:
                 logger.debug("Price alert check failed for alert %s (%s): %s", alert.id, alert.code, exc)

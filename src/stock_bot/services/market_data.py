@@ -1,4 +1,4 @@
-"""Unified async global market data service supporting A-Share (CN), Hong Kong (HK), and US stocks."""
+"""Unified async global market data service supporting A-Share (CN), Hong Kong (HK), US, and Singapore (SG/SGX)."""
 
 from __future__ import annotations
 
@@ -27,37 +27,78 @@ logger = logging.getLogger(__name__)
 
 CN_CODE_RE = re.compile(r"^(?:sh|sz|bj)?(\d{6})(?:\.(?:SH|SZ|BJ))?$", re.IGNORECASE)
 HK_CODE_RE = re.compile(r"^(?:hk)?(\d{4,5})(?:\.HK)?$", re.IGNORECASE)
+SG_CODE_RE = re.compile(r"^([A-Z0-9]{2,5})\.SI$", re.IGNORECASE)
 US_CODE_RE = re.compile(r"^([A-Z]{1,5}(?:[.-][A-Z])?)(?:\.US)?$", re.IGNORECASE)
 
-# Popular HK & US Chinese aliases for instant natural-language / fuzzy lookup
+# Popular CN / HK / US / SG bilingual aliases for instant natural-language & fuzzy lookup
 POPULAR_GLOBAL_ALIASES: dict[str, StockCandidate] = {
+    # Singapore (SGX)
+    "dbs": StockCandidate(code="D05.SI", ts_code="D05.SI", name="DBS Group", market="SGX", market_type="SG", yf_symbol="D05.SI"),
+    "星展": StockCandidate(code="D05.SI", ts_code="D05.SI", name="DBS Group", market="SGX", market_type="SG", yf_symbol="D05.SI"),
+    "星展银行": StockCandidate(code="D05.SI", ts_code="D05.SI", name="DBS Group", market="SGX", market_type="SG", yf_symbol="D05.SI"),
+    "ocbc": StockCandidate(code="O39.SI", ts_code="O39.SI", name="OCBC Bank", market="SGX", market_type="SG", yf_symbol="O39.SI"),
+    "华侨银行": StockCandidate(code="O39.SI", ts_code="O39.SI", name="OCBC Bank", market="SGX", market_type="SG", yf_symbol="O39.SI"),
+    "uob": StockCandidate(code="U11.SI", ts_code="U11.SI", name="United Overseas Bank", market="SGX", market_type="SG", yf_symbol="U11.SI"),
+    "大华银行": StockCandidate(code="U11.SI", ts_code="U11.SI", name="United Overseas Bank", market="SGX", market_type="SG", yf_symbol="U11.SI"),
+    "singtel": StockCandidate(code="Z74.SI", ts_code="Z74.SI", name="Singtel", market="SGX", market_type="SG", yf_symbol="Z74.SI"),
+    "新电信": StockCandidate(code="Z74.SI", ts_code="Z74.SI", name="Singtel", market="SGX", market_type="SG", yf_symbol="Z74.SI"),
+    "sia": StockCandidate(code="C6L.SI", ts_code="C6L.SI", name="Singapore Airlines", market="SGX", market_type="SG", yf_symbol="C6L.SI"),
+    "新航": StockCandidate(code="C6L.SI", ts_code="C6L.SI", name="Singapore Airlines", market="SGX", market_type="SG", yf_symbol="C6L.SI"),
+    "新加坡航空": StockCandidate(code="C6L.SI", ts_code="C6L.SI", name="Singapore Airlines", market="SGX", market_type="SG", yf_symbol="C6L.SI"),
+    "sgx": StockCandidate(code="S68.SI", ts_code="S68.SI", name="Singapore Exchange", market="SGX", market_type="SG", yf_symbol="S68.SI"),
+    "新交所": StockCandidate(code="S68.SI", ts_code="S68.SI", name="Singapore Exchange", market="SGX", market_type="SG", yf_symbol="S68.SI"),
+    "keppel": StockCandidate(code="BN4.SI", ts_code="BN4.SI", name="Keppel Ltd.", market="SGX", market_type="SG", yf_symbol="BN4.SI"),
+    "吉宝": StockCandidate(code="BN4.SI", ts_code="BN4.SI", name="Keppel Ltd.", market="SGX", market_type="SG", yf_symbol="BN4.SI"),
+    "capitaland": StockCandidate(code="C38U.SI", ts_code="C38U.SI", name="CapitaLand Integrated Commercial Trust", market="SGX", market_type="SG", yf_symbol="C38U.SI"),
+    "凯德": StockCandidate(code="C38U.SI", ts_code="C38U.SI", name="CapitaLand Integrated Commercial Trust", market="SGX", market_type="SG", yf_symbol="C38U.SI"),
+    "wilmar": StockCandidate(code="F34.SI", ts_code="F34.SI", name="Wilmar International", market="SGX", market_type="SG", yf_symbol="F34.SI"),
+    "丰益国际": StockCandidate(code="F34.SI", ts_code="F34.SI", name="Wilmar International", market="SGX", market_type="SG", yf_symbol="F34.SI"),
+    "st engineering": StockCandidate(code="S63.SI", ts_code="S63.SI", name="ST Engineering", market="SGX", market_type="SG", yf_symbol="S63.SI"),
+    # Hong Kong
+    "tencent": StockCandidate(code="00700", ts_code="00700.HK", name="Tencent Holdings", market="HK", market_type="HK", yf_symbol="0700.HK"),
     "腾讯": StockCandidate(code="00700", ts_code="00700.HK", name="腾讯控股", market="HK", market_type="HK", yf_symbol="0700.HK"),
     "腾讯控股": StockCandidate(code="00700", ts_code="00700.HK", name="腾讯控股", market="HK", market_type="HK", yf_symbol="0700.HK"),
+    "alibaba": StockCandidate(code="09988", ts_code="09988.HK", name="Alibaba Group", market="HK", market_type="HK", yf_symbol="9988.HK"),
     "阿里": StockCandidate(code="09988", ts_code="09988.HK", name="阿里巴巴-W", market="HK", market_type="HK", yf_symbol="9988.HK"),
     "阿里巴巴": StockCandidate(code="09988", ts_code="09988.HK", name="阿里巴巴-W", market="HK", market_type="HK", yf_symbol="9988.HK"),
+    "meituan": StockCandidate(code="03690", ts_code="03690.HK", name="Meituan", market="HK", market_type="HK", yf_symbol="3690.HK"),
     "美团": StockCandidate(code="03690", ts_code="03690.HK", name="美团-W", market="HK", market_type="HK", yf_symbol="3690.HK"),
+    "xiaomi": StockCandidate(code="01810", ts_code="01810.HK", name="Xiaomi Corp", market="HK", market_type="HK", yf_symbol="1810.HK"),
     "小米": StockCandidate(code="01810", ts_code="01810.HK", name="小米集团-W", market="HK", market_type="HK", yf_symbol="1810.HK"),
     "小米集团": StockCandidate(code="01810", ts_code="01810.HK", name="小米集团-W", market="HK", market_type="HK", yf_symbol="1810.HK"),
     "京东": StockCandidate(code="09618", ts_code="09618.HK", name="京东集团-SW", market="HK", market_type="HK", yf_symbol="9618.HK"),
     "网易": StockCandidate(code="09999", ts_code="09999.HK", name="网易-S", market="HK", market_type="HK", yf_symbol="9999.HK"),
     "百度": StockCandidate(code="09888", ts_code="09888.HK", name="百度集团-SW", market="HK", market_type="HK", yf_symbol="9888.HK"),
     "快手": StockCandidate(code="01024", ts_code="01024.HK", name="快手-W", market="HK", market_type="HK", yf_symbol="1024.HK"),
-    "港交所": StockCandidate(code="00388", ts_code="00388.HK", name="香港交易所", market="HK", market_type="HK", yf_symbol="0388.HK"),
-    "汇丰": StockCandidate(code="00005", ts_code="00005.HK", name="汇丰控股", market="HK", market_type="HK", yf_symbol="0005.HK"),
-    "苹果": StockCandidate(code="AAPL", ts_code="AAPL", name="Apple (苹果)", market="US", market_type="US", yf_symbol="AAPL"),
-    "英伟达": StockCandidate(code="NVDA", ts_code="NVDA", name="NVIDIA (英伟达)", market="US", market_type="US", yf_symbol="NVDA"),
-    "特斯拉": StockCandidate(code="TSLA", ts_code="TSLA", name="Tesla (特斯拉)", market="US", market_type="US", yf_symbol="TSLA"),
-    "微软": StockCandidate(code="MSFT", ts_code="MSFT", name="Microsoft (微软)", market="US", market_type="US", yf_symbol="MSFT"),
-    "谷歌": StockCandidate(code="GOOGL", ts_code="GOOGL", name="Alphabet (谷歌)", market="US", market_type="US", yf_symbol="GOOGL"),
-    "亚马逊": StockCandidate(code="AMZN", ts_code="AMZN", name="Amazon (亚马逊)", market="US", market_type="US", yf_symbol="AMZN"),
+    "港交所": StockCandidate(code="00388", ts_code="00388.HK", name="HKEX", market="HK", market_type="HK", yf_symbol="0388.HK"),
+    "汇丰": StockCandidate(code="00005", ts_code="00005.HK", name="HSBC Holdings", market="HK", market_type="HK", yf_symbol="0005.HK"),
+    # US
+    "apple": StockCandidate(code="AAPL", ts_code="AAPL", name="Apple Inc.", market="US", market_type="US", yf_symbol="AAPL"),
+    "苹果": StockCandidate(code="AAPL", ts_code="AAPL", name="Apple Inc.", market="US", market_type="US", yf_symbol="AAPL"),
+    "nvidia": StockCandidate(code="NVDA", ts_code="NVDA", name="NVIDIA Corp.", market="US", market_type="US", yf_symbol="NVDA"),
+    "英伟达": StockCandidate(code="NVDA", ts_code="NVDA", name="NVIDIA Corp.", market="US", market_type="US", yf_symbol="NVDA"),
+    "tesla": StockCandidate(code="TSLA", ts_code="TSLA", name="Tesla Inc.", market="US", market_type="US", yf_symbol="TSLA"),
+    "特斯拉": StockCandidate(code="TSLA", ts_code="TSLA", name="Tesla Inc.", market="US", market_type="US", yf_symbol="TSLA"),
+    "microsoft": StockCandidate(code="MSFT", ts_code="MSFT", name="Microsoft Corp.", market="US", market_type="US", yf_symbol="MSFT"),
+    "微软": StockCandidate(code="MSFT", ts_code="MSFT", name="Microsoft Corp.", market="US", market_type="US", yf_symbol="MSFT"),
+    "google": StockCandidate(code="GOOGL", ts_code="GOOGL", name="Alphabet Inc.", market="US", market_type="US", yf_symbol="GOOGL"),
+    "谷歌": StockCandidate(code="GOOGL", ts_code="GOOGL", name="Alphabet Inc.", market="US", market_type="US", yf_symbol="GOOGL"),
+    "amazon": StockCandidate(code="AMZN", ts_code="AMZN", name="Amazon.com Inc.", market="US", market_type="US", yf_symbol="AMZN"),
+    "亚马逊": StockCandidate(code="AMZN", ts_code="AMZN", name="Amazon.com Inc.", market="US", market_type="US", yf_symbol="AMZN"),
     "脸书": StockCandidate(code="META", ts_code="META", name="Meta Platforms", market="US", market_type="US", yf_symbol="META"),
-    "拼多多": StockCandidate(code="PDD", ts_code="PDD", name="PDD Holdings (拼多多)", market="US", market_type="US", yf_symbol="PDD"),
-    "台积电": StockCandidate(code="TSM", ts_code="TSM", name="TSMC (台积电)", market="US", market_type="US", yf_symbol="TSM"),
-    "博通": StockCandidate(code="AVGO", ts_code="AVGO", name="Broadcom (博通)", market="US", market_type="US", yf_symbol="AVGO"),
-    "奈飞": StockCandidate(code="NFLX", ts_code="NFLX", name="Netflix (奈飞)", market="US", market_type="US", yf_symbol="NFLX"),
-    "英特尔": StockCandidate(code="INTC", ts_code="INTC", name="Intel (英特尔)", market="US", market_type="US", yf_symbol="INTC"),
+    "拼多多": StockCandidate(code="PDD", ts_code="PDD", name="PDD Holdings", market="US", market_type="US", yf_symbol="PDD"),
+    "tsmc": StockCandidate(code="TSM", ts_code="TSM", name="TSMC", market="US", market_type="US", yf_symbol="TSM"),
+    "台积电": StockCandidate(code="TSM", ts_code="TSM", name="TSMC", market="US", market_type="US", yf_symbol="TSM"),
+    "博通": StockCandidate(code="AVGO", ts_code="AVGO", name="Broadcom Inc.", market="US", market_type="US", yf_symbol="AVGO"),
+    "奈飞": StockCandidate(code="NFLX", ts_code="NFLX", name="Netflix Inc.", market="US", market_type="US", yf_symbol="NFLX"),
+    "英特尔": StockCandidate(code="INTC", ts_code="INTC", name="Intel Corp.", market="US", market_type="US", yf_symbol="INTC"),
     "超微": StockCandidate(code="AMD", ts_code="AMD", name="AMD", market="US", market_type="US", yf_symbol="AMD"),
     "伯克希尔": StockCandidate(code="BRK-B", ts_code="BRK-B", name="Berkshire Hathaway", market="US", market_type="US", yf_symbol="BRK-B"),
+    "sea": StockCandidate(code="SE", ts_code="SE", name="Sea Limited", market="US", market_type="US", yf_symbol="SE"),
+    # CN popular English aliases
+    "moutai": StockCandidate(code="600519", ts_code="600519.SH", name="Kweichow Moutai (贵州茅台)", market="SH", market_type="CN", yf_symbol="600519.SS"),
+    "catl": StockCandidate(code="300750", ts_code="300750.SZ", name="CATL (宁德时代)", market="SZ", market_type="CN", yf_symbol="300750.SZ"),
+    "byd": StockCandidate(code="002594", ts_code="002594.SZ", name="BYD (比亚迪)", market="SZ", market_type="CN", yf_symbol="002594.SZ"),
 }
 
 
@@ -71,7 +112,7 @@ def normalize_stock_code(raw: str) -> tuple[str, str, str]:
     cleaned = raw.strip()
     match = CN_CODE_RE.match(cleaned)
     if not match:
-        raise ValueError(f"无效的 A 股代码格式: {raw}")
+        raise ValueError(f"Invalid A-share stock code format: {raw}")
 
     code = match.group(1)
     if code.startswith(("6", "5")):
@@ -80,16 +121,32 @@ def normalize_stock_code(raw: str) -> tuple[str, str, str]:
         return code, f"{code}.SZ", f"sz{code}"
     if code.startswith(("4", "8", "9")):
         return code, f"{code}.BJ", f"bj{code}"
-    raise ValueError(f"无法识别的交易所前缀: {raw}")
+    raise ValueError(f"Unrecognized A-share exchange prefix: {raw}")
 
 
 def parse_stock_symbol(raw: str) -> StockCandidate | None:
-    """Parse a direct CN / HK / US stock symbol into a StockCandidate, or None if not a direct symbol."""
+    """Parse a direct CN / HK / SG / US stock symbol into a StockCandidate, or None if not a direct symbol."""
     cleaned = raw.strip()
     if not cleaned:
         return None
 
-    # 1. A-share (6 digits)
+    # 1. Singapore SGX (.SI suffix, e.g. D05.SI, O39.SI, C38U.SI)
+    sg_match = SG_CODE_RE.match(cleaned)
+    if sg_match:
+        sym = f"{sg_match.group(1).upper()}.SI"
+        for alias_cand in POPULAR_GLOBAL_ALIASES.values():
+            if alias_cand.code == sym and alias_cand.market_type == "SG":
+                return alias_cand
+        return StockCandidate(
+            code=sym,
+            ts_code=sym,
+            name=sym,
+            market="SGX",
+            market_type="SG",
+            yf_symbol=sym,
+        )
+
+    # 2. A-share (6 digits)
     if CN_CODE_RE.match(cleaned):
         try:
             code, ts_code, _ = normalize_stock_code(cleaned)
@@ -106,14 +163,13 @@ def parse_stock_symbol(raw: str) -> StockCandidate | None:
         except ValueError:
             pass
 
-    # 2. Hong Kong (4-5 digits with optional .HK / hk prefix; 4 digits requires .HK or hk prefix)
+    # 3. Hong Kong (4-5 digits with optional .HK / hk prefix; 4 digits requires .HK or hk prefix)
     hk_match = HK_CODE_RE.match(cleaned)
     if hk_match:
         digits = hk_match.group(1)
         has_hk_marker = cleaned.lower().startswith("hk") or cleaned.upper().endswith(".HK")
         if len(digits) == 5 or has_hk_marker:
             code_5 = digits.zfill(5)
-            # yfinance expects 4-digit HK symbols when leading zero is 0 (e.g. 0700.HK)
             yf_code = code_5[1:] if code_5.startswith("0") else code_5
             return StockCandidate(
                 code=code_5,
@@ -124,7 +180,12 @@ def parse_stock_symbol(raw: str) -> StockCandidate | None:
                 yf_symbol=f"{yf_code}.HK",
             )
 
-    # 3. US ticker (1-5 letters, e.g. AAPL, NVDA, BRK.B)
+    # 4. Known SGX shorthand aliases (DBS, OCBC, UOB, SIA, SGX) before generic US ticker match
+    lower = cleaned.lower()
+    if lower in POPULAR_GLOBAL_ALIASES and POPULAR_GLOBAL_ALIASES[lower].market_type == "SG":
+        return POPULAR_GLOBAL_ALIASES[lower]
+
+    # 5. US ticker (1-5 letters, e.g. AAPL, NVDA, BRK.B)
     us_match = US_CODE_RE.match(cleaned)
     if us_match:
         ticker = us_match.group(1).upper().replace(".", "-")
@@ -155,11 +216,11 @@ def _safe_float(val: Any) -> float | None:
 
 
 def _currency_for_market(market_type: MarketType) -> str:
-    return {"CN": "CNY", "HK": "HKD", "US": "USD"}[market_type]
+    return {"CN": "CNY", "HK": "HKD", "US": "USD", "SG": "SGD"}[market_type]
 
 
 class MarketDataService:
-    """Async multi-market data service (A-Share via AkShare, HK/US via yfinance + AkShare)."""
+    """Async multi-market data service (A-Share via Tencent/AkShare/yfinance, HK/US/SG via yfinance)."""
 
     def __init__(
         self,
@@ -179,7 +240,7 @@ class MarketDataService:
                 logger.warning("Failed to initialize Tushare Pro (falling back to AkShare): %s", exc)
 
     # ------------------------------------------------------------------
-    # Stock directory & unified search (CN + HK + US)
+    # Stock directory & unified search (CN + HK + US + SG)
     # ------------------------------------------------------------------
 
     async def _get_cn_directory(self) -> list[StockCandidate]:
@@ -212,16 +273,20 @@ class MarketDataService:
         return await self.cache.get_or_set("cn_stock_directory", _fetch, ttl=86400)
 
     async def search_stocks(self, query: str, limit: int = 5) -> list[StockCandidate]:
-        """Search stocks across A-Share, HK, and US by code, ticker, or Chinese name."""
+        """Search stocks across A-Share, HK, US, and SG by code, ticker, or name."""
         q = query.strip()
         if not q:
             return []
 
-        # 1. Exact alias match for popular HK/US Chinese names
+        q_lower = q.lower()
+
+        # 1. Exact alias match (EN/ZH for SG, HK, US, CN)
+        if q_lower in POPULAR_GLOBAL_ALIASES:
+            return [POPULAR_GLOBAL_ALIASES[q_lower]]
         if q in POPULAR_GLOBAL_ALIASES:
             return [POPULAR_GLOBAL_ALIASES[q]]
 
-        # 2. Direct symbol parse (CN 6-digit, HK 5-digit/.HK, US ticker)
+        # 2. Direct symbol parse (SG .SI, CN 6-digit, HK 5-digit/.HK, US ticker)
         parsed = parse_stock_symbol(q)
         if parsed is not None:
             if parsed.market_type == "CN":
@@ -233,14 +298,12 @@ class MarketDataService:
                 except Exception as exc:
                     logger.warning("CN directory fetch failed while resolving %s: %s", parsed.code, exc)
             else:
-                # Check if we have a friendly Chinese alias name for this HK/US code
                 for alias_cand in POPULAR_GLOBAL_ALIASES.values():
                     if alias_cand.code == parsed.code and alias_cand.market_type == parsed.market_type:
                         return [alias_cand]
             return [parsed]
 
-        # 3. Fuzzy search: popular HK/US aliases + CN directory
-        q_lower = q.lower()
+        # 3. Fuzzy search: global aliases + CN directory
         exact: list[StockCandidate] = []
         prefix: list[StockCandidate] = []
         contains: list[StockCandidate] = []
@@ -275,18 +338,17 @@ class MarketDataService:
     async def resolve_stock(self, query: str) -> StockCandidate:
         matches = await self.search_stocks(query, limit=1)
         if not matches:
-            raise LookupError(f"未找到与「{query}」匹配的 A 股 / 港股 / 美股标的，请检查代码或名称。")
+            raise LookupError(f"No matching CN / HK / US / SG stock found for '{query}'.")
         return matches[0]
 
     # ------------------------------------------------------------------
-    # Global market overview (A-Share + HK + US)
+    # Global market overview (CN + HK + SG + US)
     # ------------------------------------------------------------------
 
     async def _fetch_cn_indices_tencent(
         self,
         specs: list[tuple[str, str, str, str]],
     ) -> dict[str, IndexQuote]:
-        """Fetch all A-share indices in a single fast HTTP request via Tencent qt.gtimg.cn."""
         symbols = ",".join(s[0] for s in specs)
         url = f"https://qt.gtimg.cn/q={symbols}"
         code_map = {s[0]: (s[1], s[2]) for s in specs}
@@ -350,12 +412,10 @@ class MarketDataService:
         name: str,
         yf_symbol: str,
     ) -> IndexQuote | None:
-        # Fallback 1: yfinance (fast & reliable from overseas cloud servers)
         yf_quote = await self._fetch_yf_index(yf_symbol, code, name, "CN")
         if yf_quote is not None:
             return yf_quote
 
-        # Fallback 2: AkShare (with strict timeout so slow endpoints never block)
         fetchers = [
             getattr(ak, "index_zh_daily_em", None),
             getattr(ak, "stock_zh_index_daily_em", None),
@@ -423,33 +483,34 @@ class MarketDataService:
             return None
 
     async def get_market_overview(self) -> list[IndexQuote]:
-        """Fetch major A-share, Hong Kong, and US market indices concurrently."""
+        """Fetch major A-share, Hong Kong, Singapore, and US market indices concurrently."""
         cached = await self.cache.get("market_overview")
         if cached is not None:
             return cached
 
         cn_specs = [
-            ("sh000001", "000001.SH", "上证指数", "000001.SS"),
-            ("sz399001", "399001.SZ", "深证成指", "399001.SZ"),
-            ("sz399006", "399006.SZ", "创业板指", "399006.SZ"),
-            ("sh000688", "000688.SH", "科创50", "000688.SS"),
+            ("sh000001", "000001.SH", "SSE Composite", "000001.SS"),
+            ("sz399001", "399001.SZ", "SZSE Component", "399001.SZ"),
+            ("sz399006", "399006.SZ", "ChiNext", "399006.SZ"),
+            ("sh000688", "000688.SH", "STAR 50", "000688.SS"),
         ]
 
         cn_task = self._fetch_cn_indices_tencent(cn_specs)
         global_tasks = [
-            # Hong Kong
-            self._fetch_yf_index("^HSI", "HSI", "恒生指数", "HK"),
-            self._fetch_yf_index("HSTECH.HK", "HSTECH", "恒生科技", "HK"),
             # US
-            self._fetch_yf_index("^GSPC", "SPX", "标普500", "US"),
-            self._fetch_yf_index("^IXIC", "IXIC", "纳斯达克", "US"),
-            self._fetch_yf_index("^DJI", "DJI", "道琼斯", "US"),
+            self._fetch_yf_index("^GSPC", "SPX", "S&P 500", "US"),
+            self._fetch_yf_index("^IXIC", "IXIC", "NASDAQ", "US"),
+            self._fetch_yf_index("^DJI", "DJI", "Dow Jones", "US"),
+            # Singapore
+            self._fetch_yf_index("^STI", "STI", "Straits Times (STI)", "SG"),
+            # Hong Kong
+            self._fetch_yf_index("^HSI", "HSI", "Hang Seng", "HK"),
+            self._fetch_yf_index("HSTECH.HK", "HSTECH", "Hang Seng Tech", "HK"),
         ]
 
         cn_map, *global_raw = await asyncio.gather(cn_task, *global_tasks, return_exceptions=True)
         cn_dict: dict[str, IndexQuote] = cn_map if isinstance(cn_map, dict) else {}
 
-        # Fill any missing CN indices via yfinance/AkShare fallback concurrently
         missing_specs = [s for s in cn_specs if s[0] not in cn_dict]
         if missing_specs:
             fallback_res = await asyncio.gather(
@@ -462,16 +523,15 @@ class MarketDataService:
 
         cn_ordered = [cn_dict[s[0]] for s in cn_specs if s[0] in cn_dict]
         global_ordered = [r for r in global_raw if isinstance(r, IndexQuote)]
-        results = cn_ordered + global_ordered
+        results = global_ordered + cn_ordered
 
-        # Cache full results for 120s; if CN failed completely, only cache briefly (15s)
         ttl = 120 if cn_ordered else 15
         if results:
             await self.cache.set("market_overview", results, ttl=ttl)
         return results
 
     # ------------------------------------------------------------------
-    # Historical K-line OHLCV (CN + HK + US)
+    # Historical K-line OHLCV (CN + HK + US + SG)
     # ------------------------------------------------------------------
 
     async def get_kline(
@@ -480,12 +540,11 @@ class MarketDataService:
         period: Literal["daily", "weekly", "monthly"] = "daily",
         days: int = 180,
     ) -> tuple[StockCandidate, pd.DataFrame]:
-        """Fetch adjusted OHLCV DataFrame indexed by DatetimeIndex."""
         candidate = await self.resolve_stock(code_or_name)
         cache_key = f"kline:{candidate.market_type}:{candidate.code}:{period}:{days}"
 
         async def _fetch() -> pd.DataFrame:
-            if candidate.market_type in ("HK", "US"):
+            if candidate.market_type in ("HK", "US", "SG"):
                 return await self._fetch_yf_kline(candidate, period, days)
             return await self._fetch_cn_kline(candidate, period, days)
 
@@ -508,7 +567,7 @@ class MarketDataService:
 
         df = await asyncio.to_thread(_load)
         if df is None or df.empty:
-            raise LookupError(f"暂无 {candidate.name}({candidate.ts_code}) 的历史行情数据。")
+            raise LookupError(f"No historical OHLCV data available for {candidate.name} ({candidate.ts_code}).")
 
         if df.index.tz is not None:
             df.index = df.index.tz_localize(None)
@@ -536,27 +595,32 @@ class MarketDataService:
 
         df = None
         try:
-            df = await asyncio.to_thread(
-                ak.stock_zh_a_hist,
-                symbol=candidate.code,
-                period=period,
-                start_date=start_str,
-                end_date=end_str,
-                adjust="qfq",
+            df = await asyncio.wait_for(
+                asyncio.to_thread(
+                    ak.stock_zh_a_hist,
+                    symbol=candidate.code,
+                    period=period,
+                    start_date=start_str,
+                    end_date=end_str,
+                    adjust="qfq",
+                ),
+                timeout=8.0,
             )
         except Exception as exc:
             logger.warning("Primary EastMoney kline failed for %s: %s", candidate.code, exc)
 
-        # Fallback 1: Tencent daily history
         if df is None or df.empty:
             try:
                 _, _, tx_symbol = normalize_stock_code(candidate.code)
-                tx_df = await asyncio.to_thread(
-                    ak.stock_zh_a_hist_tx,
-                    symbol=tx_symbol,
-                    start_date=start_str,
-                    end_date=end_str,
-                    adjust="qfq",
+                tx_df = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        ak.stock_zh_a_hist_tx,
+                        symbol=tx_symbol,
+                        start_date=start_str,
+                        end_date=end_str,
+                        adjust="qfq",
+                    ),
+                    timeout=8.0,
                 )
                 if tx_df is not None and not tx_df.empty:
                     tx_df = tx_df.rename(
@@ -586,7 +650,6 @@ class MarketDataService:
             except Exception as exc:
                 logger.warning("Tencent kline fallback failed for %s: %s", candidate.code, exc)
 
-        # Fallback 2: yfinance for CN stocks (great for overseas cloud deployments!)
         if df is None or df.empty:
             return await self._fetch_yf_kline(candidate, period, days)
 
@@ -611,7 +674,7 @@ class MarketDataService:
         return df
 
     # ------------------------------------------------------------------
-    # Stock quote (CN + HK + US)
+    # Stock quote (CN + HK + US + SG)
     # ------------------------------------------------------------------
 
     async def get_quote(self, code_or_name: str) -> StockQuote:
@@ -638,7 +701,10 @@ class MarketDataService:
 
             if candidate.market_type == "CN":
                 try:
-                    info_df = await asyncio.to_thread(ak.stock_individual_info_em, symbol=candidate.code)
+                    info_df = await asyncio.wait_for(
+                        asyncio.to_thread(ak.stock_individual_info_em, symbol=candidate.code),
+                        timeout=6.0,
+                    )
                     if info_df is not None and not info_df.empty:
                         info_map = dict(zip(info_df["item"], info_df["value"], strict=False))
                         if stock_name == candidate.code and info_map.get("股票简称"):
@@ -669,7 +735,10 @@ class MarketDataService:
                         logger.debug("Optional Tushare valuation fetch failed: %s", exc)
             else:
                 try:
-                    info = await asyncio.to_thread(lambda: yf.Ticker(candidate.yf_symbol).info)
+                    info = await asyncio.wait_for(
+                        asyncio.to_thread(lambda: yf.Ticker(candidate.yf_symbol).info),
+                        timeout=8.0,
+                    )
                     if isinstance(info, dict):
                         if stock_name in (candidate.code, candidate.ts_code):
                             stock_name = str(info.get("shortName") or info.get("longName") or stock_name)
@@ -712,7 +781,7 @@ class MarketDataService:
         return await self.cache.get_or_set(cache_key, _fetch, ttl=120)
 
     # ------------------------------------------------------------------
-    # Financial indicators (CN + HK + US)
+    # Financial indicators (CN + HK + US + SG)
     # ------------------------------------------------------------------
 
     async def get_finance(self, code_or_name: str) -> FinanceSummary:
@@ -720,10 +789,10 @@ class MarketDataService:
         cache_key = f"finance:{candidate.market_type}:{candidate.code}"
 
         async def _fetch() -> FinanceSummary:
-            if candidate.market_type in ("HK", "US"):
+            if candidate.market_type in ("HK", "US", "SG"):
                 info = await asyncio.to_thread(lambda: yf.Ticker(candidate.yf_symbol).info)
                 if not isinstance(info, dict) or not info:
-                    raise LookupError(f"暂未获取到 {candidate.name}({candidate.ts_code}) 的财务数据。")
+                    raise LookupError(f"No financial data available for {candidate.name} ({candidate.ts_code}).")
                 roe = _safe_float(info.get("returnOnEquity"))
                 gross = _safe_float(info.get("grossMargins"))
                 net = _safe_float(info.get("profitMargins"))
@@ -735,7 +804,7 @@ class MarketDataService:
                     name=str(info.get("shortName") or candidate.name),
                     market_type=candidate.market_type,
                     currency=str(info.get("currency") or _currency_for_market(candidate.market_type)),
-                    report_date="TTM / 最新财报",
+                    report_date="TTM / Latest",
                     eps=_safe_float(info.get("trailingEps")),
                     roe=round(roe * 100, 2) if roe is not None else None,
                     bps=_safe_float(info.get("bookValue")),
@@ -749,9 +818,11 @@ class MarketDataService:
                     pb=_safe_float(info.get("priceToBook")),
                 )
 
-            # CN A-Share: AkShare primary
             try:
-                df = await asyncio.to_thread(ak.stock_financial_analysis_indicator, symbol=candidate.code)
+                df = await asyncio.wait_for(
+                    asyncio.to_thread(ak.stock_financial_analysis_indicator, symbol=candidate.code),
+                    timeout=8.0,
+                )
                 if df is not None and not df.empty:
                     df = df.sort_values("日期", ascending=False)
                     latest = df.iloc[0]
@@ -774,7 +845,6 @@ class MarketDataService:
             except Exception as exc:
                 logger.warning("AkShare finance fetch failed for %s: %s", candidate.code, exc)
 
-            # Fallback to Tushare if configured
             if self._pro is not None:
                 ts_df = await asyncio.to_thread(self._pro.fina_indicator, ts_code=candidate.ts_code)
                 if ts_df is not None and not ts_df.empty:
@@ -796,12 +866,12 @@ class MarketDataService:
                         profit_yoy=_safe_float(row.get("netprofit_yoy")),
                     )
 
-            raise LookupError(f"暂未获取到 {candidate.name}({candidate.code}) 的财务指标数据。")
+            raise LookupError(f"No financial indicators available for {candidate.name} ({candidate.code}).")
 
         return await self.cache.get_or_set(cache_key, _fetch, ttl=3600)
 
     # ------------------------------------------------------------------
-    # Latest news (CN + HK + US)
+    # Latest news (CN + HK + US + SG)
     # ------------------------------------------------------------------
 
     async def get_news(self, code_or_name: str, limit: int = 8) -> tuple[StockCandidate, list[NewsItem]]:
@@ -810,7 +880,10 @@ class MarketDataService:
 
         async def _fetch() -> list[NewsItem]:
             if candidate.market_type == "CN":
-                df = await asyncio.to_thread(ak.stock_news_em, symbol=candidate.code)
+                df = await asyncio.wait_for(
+                    asyncio.to_thread(ak.stock_news_em, symbol=candidate.code),
+                    timeout=8.0,
+                )
                 if df is None or df.empty:
                     return []
                 items: list[NewsItem] = []
@@ -826,7 +899,6 @@ class MarketDataService:
                     )
                 return items
 
-            # HK / US news via yfinance
             raw_news = await asyncio.to_thread(lambda: yf.Ticker(candidate.yf_symbol).news or [])
             items = []
             for entry in raw_news[:limit]:

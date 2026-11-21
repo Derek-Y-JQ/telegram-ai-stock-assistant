@@ -1,4 +1,4 @@
-"""Pydantic domain models for CN/HK/US market data, technical diagnosis, alerts, and watchlist."""
+"""Pydantic domain models for CN/HK/US/SG market data, technical diagnosis, alerts, and watchlist."""
 
 from __future__ import annotations
 
@@ -6,12 +6,13 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-MarketType = Literal["CN", "HK", "US"]
+MarketType = Literal["CN", "HK", "US", "SG"]
+Lang = Literal["en", "zh"]
 
 
 class StockCandidate(BaseModel):
-    code: str = Field(..., description="Canonical display code, e.g. 600519, 00700, AAPL")
-    ts_code: str = Field(..., description="Market-qualified code, e.g. 600519.SH, 00700.HK, AAPL")
+    code: str = Field(..., description="Canonical display code, e.g. 600519, 00700, AAPL, D05.SI")
+    ts_code: str = Field(..., description="Market-qualified code, e.g. 600519.SH, 00700.HK, AAPL, D05.SI")
     name: str
     market: str = ""
     market_type: MarketType = "CN"
@@ -51,7 +52,7 @@ class StockQuote(BaseModel):
     turnover_rate: float | None = None
     pe_ttm: float | None = None
     pb: float | None = None
-    total_mv: float | None = None  # Total market cap (亿元 in local currency)
+    total_mv: float | None = None  # Total market cap (in 100M / 亿 local currency)
 
 
 class FinanceSummary(BaseModel):
