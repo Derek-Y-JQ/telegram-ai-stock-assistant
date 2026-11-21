@@ -8,6 +8,8 @@
 
 ## 🌍 English
 
+Search "Stockwatcher" in you Telegram and start chatting with the bot.
+
 An async, AI-powered **Telegram Global Stock Research Assistant** covering **🇺🇸 US**, **🇸🇬 Singapore (SGX)**, **🇭🇰 Hong Kong (HKEX)**, and **🇨🇳 China A-Shares**. Built with a streaming Tool-Calling Financial Agent, interactive **Telegram Mini App** candlestick terminal (TradingView Lightweight Charts), quantitative technical diagnosis, scheduled morning/evening briefings, and price alerts.
 
 ### ✨ Key Features
@@ -73,6 +75,8 @@ uv run ruff check src tests
 <a id="中文说明"></a>
 
 ## 🇨🇳 中文说明
+
+在你的Telegram上搜索“Stockwatcher”即可开始对话。
 
 现代化、全异步的 **全球股市智能投研 Telegram 机器人**，一站式覆盖 **🇺🇸 美股 · 🇸🇬 新加坡 (SGX) · 🇭🇰 港股 · 🇨🇳 A 股**。默认界面与 AI 回复均为英文，支持通过 `/lang` 一键在中英文间无缝切换。
 
